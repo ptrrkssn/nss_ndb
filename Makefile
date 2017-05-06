@@ -53,3 +53,6 @@ distclean: clean
 install: $(LIB) $(BIN)
 	$(INSTALL) -o root -g wheel -m 0444 $(LIB) $(DEST)/lib
 	$(INSTALL) -o root -g wheel -m 0444 $(BIN) $(DEST)/bin
+
+upload:	distclean
+	git commit -a && git push
