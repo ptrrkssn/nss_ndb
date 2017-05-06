@@ -1,2 +1,13 @@
 Author: Peter Eriksson <pen@lysator.liu.se>
 Date: 2017-05-06
+
+This project consists of a NSS module (/usr/lib/nss_ndb.so.1) and a CLI utility (/usr/bin/makendb) that enables
+big passwd & group files to be handled efficiently via BTree databases stored in /var/db/nss_ndb/. Enable via
+the "ndb" keyword in /etc/nsswitch.conf
+
+Currently this project only supports FreeBSD (tested on 11).
+
+The code can be downloaded from:
+
+    https://github.com/ptrrkssn/nss_ndb
+
