@@ -37,6 +37,11 @@
 #include <pwd.h>
 #include <ctype.h>
 
+int debug_f = 0;
+int print_f = 0;
+int unique_f = 0;
+int verbose_f = 0;
+int key_f = 0;
 
 char *
 trim(char *buf) {
@@ -67,21 +72,122 @@ strxdup(const char *str) {
 }
 
 
+void
+version(FILE *fp) {
+  fprintf(fp, "[makendb, version %s - Copyright (c) 2017 Peter Eriksson <pen@lysator.liu.se>]\n", VERSION);
+}
+
+
+int
+add_user_group(DB *db,
+		   char *gid,
+		   char *members) {
+  DBT key, val;
+  char *cp;
+  int rc;
+
+  
+  if (debug_f)
+    fprintf(stderr, "* add_user_group(%s, %s): \n", gid, members);
+  
+  while ((cp = strsep(&members, ",")) != NULL) {
+    if (debug_f)
+      fprintf(stderr, "** looking up user: %s\n", cp);
+
+    key.data = cp;
+    key.size = strlen(cp);
+
+    val.data = NULL;
+    val.size = 0;
+
+    rc = db->get(db, &key, &val, 0);
+    if (rc == 0) {
+      /* Old record - append */
+      int found;
+      char *grp, *grplist = val.data;
+      char *buf = malloc(val.size + 64);
+      if (!buf)
+	return -1;
+      
+      strcpy(buf, val.data);
+      
+      if (debug_f)
+	fprintf(stderr, "*** add_user_group: %s: Old Record: %s\n", cp, grplist);
+
+      (void) strsep(&grplist, ":");
+      found = 0;
+      while ((grp = strsep(&grplist, ",")) != NULL) {
+	if (debug_f)
+	  fprintf(stderr, "***** add_user_group: %s: Checking %s vs %s\n", cp, grp, gid);
+	
+	if (strcmp(grp, gid) == 0) {
+	  if (debug_f)
+	    fprintf(stderr, "**** add_user_group: %s: GID already on list: %s\n", cp, gid);
+	  found = 1;
+	  break;
+	}
+      }
+
+      if (!found) {
+	if (debug_f)
+	  fprintf(stderr, "**** add_user_group: %s: Adding new gid: %s\n", cp, gid);
+	
+	strcat(buf, ",");
+	strcat(buf, gid);
+	
+	val.data = buf;
+	val.size = strlen(buf)+1;
+	
+	rc = db->put(db, &key, &val, 0);
+	if (rc < 0) {
+	  if (debug_f)
+	    fprintf(stderr, "*** add_user_group: %.*s: db->put: %s\n", (int) key.size, key.data, strerror(errno));
+	  return -1;
+	}
+	
+	free(buf);
+      }
+      
+    } else if (rc == 1) {
+      /* New record - create*/
+
+      if (debug_f)
+	fprintf(stderr, "*** add_user_group: %s: New Record\n", cp);
+      
+      char *buf = malloc(128);
+      if (!buf)
+	return -1;
+
+      snprintf(buf, 128, "%s:%s", cp, gid);
+      val.data = buf;
+      val.size = strlen(buf)+1;
+      
+      rc = db->put(db, &key, &val, 0);
+      if (rc < 0) {
+	if (debug_f)
+	  fprintf(stderr, "*** add_user_group: %.*s: db->put: %s\n", (int) key.size, key.data, strerror(errno));
+	return -1;
+      }
+      
+      free(buf);
+    }
+  }
+
+  return 0;
+}
+
+
 int
 main(int argc,
      char *argv[]) {
-  DB *db_id = NULL, *db_name = NULL, *db = NULL;
+  DB *db_id = NULL, *db_name = NULL, *db_user = NULL, *db = NULL;
   char buf[2048];
   DBT key, val;
   int rc, ni, line;
   char *name, *id, *cp;
   char *type = NULL;
-  char path[2048], *p_name, *p_id;
+  char path[2048], *p_name, *p_id, *p_user;
   int i, j;
-  int print_f = 0;
-  int unique_f = 0;
-  int verbose_f = 0;
-  int key_f = 0;
   char *delim = ":";
   int nw = 0;
   
@@ -89,8 +195,17 @@ main(int argc,
   for (i = 1; i < argc && argv[i][0] == '-'; i++) {
     for (j = 1; argv[i][j]; j++) {
       switch (argv[i][j]) {
+      case 'V':
+	version(stdout);
+	exit(0);
+	  
       case 'v':
 	++verbose_f;
+	version(stderr);
+	break;
+	
+      case 'd':
+	++debug_f;
 	break;
 	
       case 'k':
@@ -126,7 +241,7 @@ main(int argc,
 	goto NextArg;
 	
       case 'h':
-	printf("Usage: %s [-h] [-u] [-p] [-k] [-T passwd|group] [-D <delim>] <db-path>\n", argv[0]);
+	printf("Usage: %s [-h] [-V] [-v] [-u] [-p] [-k] [-T passwd|group] [-D <delim>] <db-path>\n", argv[0]);
 	exit(0);
 	
       default:
@@ -198,7 +313,7 @@ main(int argc,
     
   } else if (strcmp(type, "passwd") == 0) {
     
-    sprintf(path, "%s.byuid.db", argv[i]);
+    sprintf(path, "%s/passwd.byuid.db", argv[i]);
     db_id = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
     if (!db_id) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
@@ -206,17 +321,25 @@ main(int argc,
     }
     p_id = strdup(path);
     
-    sprintf(path, "%s.byname.db", argv[i]);
+    sprintf(path, "%s/passwd.byname.db", argv[i]);
     db_name = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
     if (!db_id) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
     p_name = strdup(path);
+    
+    sprintf(path, "%s/group.byuser.db", argv[i]);
+    db_user = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
+    if (!db_id) {
+      fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
+      exit(1);
+    }
+    p_user = strdup(path);
     
   } else if (strcmp(type, "group") == 0) {
     
-    sprintf(path, "%s.bygid.db", argv[i]);
+    sprintf(path, "%s/group.bygid.db", argv[i]);
     db_id = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
     if (!db_id) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
@@ -224,13 +347,21 @@ main(int argc,
     }
     p_id = strdup(path);
     
-    sprintf(path, "%s.byname.db", argv[i]);
+    sprintf(path, "%s/group.byname.db", argv[i]);
     db_name = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
     if (!db_id) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
     p_name = strdup(path);
+    
+    sprintf(path, "%s/group.byuser.db", argv[i]);
+    db_user = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
+    if (!db_id) {
+      fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
+      exit(1);
+    }
+    p_user = strdup(path);
     
   } else {
   
@@ -285,6 +416,13 @@ main(int argc,
       nw++;
     }
 
+    if (db_user && id && type) {
+      if (strcmp(type, "group") == 0 && ptr && *ptr)
+	add_user_group(db_user, id, ptr);
+      else
+	add_user_group(db_user, id, name);
+    }
+    
     ++ni;
   }
 
@@ -292,6 +430,9 @@ main(int argc,
   
   if (db_id)
     db_id->close(db_id);
+
+  if (db_user)
+    db_user->close(db_user);
 
   if (verbose_f)
     fprintf(stderr, "%u entries imported (%u warning%s)\n", ni, nw, nw == 1 ? "" : "s");

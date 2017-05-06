@@ -27,13 +27,16 @@
 
 DEST=/usr
 
+PACKAGE=nss_ndb
+VERSION=1.0.1
+
 LIB=nss_ndb.so.1
 LIBOBJS=nss_ndb.o
 
 BIN=makendb
 BINOBJS=makendb.o
 
-CFLAGS=-fPIC -g -O -Wall
+CFLAGS=-fPIC -g -O -Wall -DVERSION="\"$(VERSION)\""
 LDFLAGS=-G
 
 all: $(LIB) $(BIN)
@@ -54,5 +57,8 @@ install: $(LIB) $(BIN)
 	$(INSTALL) -o root -g wheel -m 0444 $(LIB) $(DEST)/lib
 	$(INSTALL) -o root -g wheel -m 0444 $(BIN) $(DEST)/bin
 
-upload:	distclean
+push:	distclean
 	git commit -a && git push
+
+dist:	distclean
+	(cd ../dist && ln -sf ../$(PACKAGE) $(PACKAGE)-$(VERSION) && tar zcf $(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION)/* && rm $(PACKAGE)-$(VERSION))

@@ -51,6 +51,8 @@
 #define PATH_NSS_NDB_GROUP_BY_GID   PATH_NSS_NDB "/group.bygid.db"
 #define PATH_NSS_NDB_GROUP_BY_NAME  PATH_NSS_NDB "/group.byname.db"
 
+#define PATH_NSS_NDB_USERGROUPS_BY_NAME  PATH_NSS_NDB "/group.byuser.db"
+
 
 static __thread DB *db_passwd_byuid = NULL;
 static __thread DB *db_passwd_byname = NULL;
@@ -58,12 +60,16 @@ static __thread DB *db_passwd_byname = NULL;
 static __thread DB *db_group_bygid = NULL;
 static __thread DB *db_group_byname = NULL;
 
+static __thread DB *db_usergroups_byname = NULL;
+
 
 static __thread char *path_passwd_byname = PATH_NSS_NDB_PASSWD_BY_NAME;
 static __thread char *path_passwd_byuid  = PATH_NSS_NDB_PASSWD_BY_UID;
 
 static __thread char *path_group_byname  = PATH_NSS_NDB_GROUP_BY_NAME;
 static __thread char *path_group_bygid   = PATH_NSS_NDB_GROUP_BY_GID;
+
+static __thread char *path_usergroups_byname = PATH_NSS_NDB_USERGROUPS_BY_NAME;
 
 
 
@@ -260,9 +266,9 @@ nss_ndb_getpwnam_r(void *rv, void *mdata, va_list ap) {
   int *res;
   
   name  = va_arg(ap, char *);
-  pbuf  = va_arg(ap, struct passwd *);     /* struct passwd *pwd */
-  buf   = va_arg(ap, char *);             /* char *buffer */
-  bsize = va_arg(ap, size_t);              /* size_t bufsize */
+  pbuf  = va_arg(ap, struct passwd *);
+  buf   = va_arg(ap, char *);         
+  bsize = va_arg(ap, size_t);         
   res   = va_arg(ap, int *);
 
   *ptr = 0;
@@ -342,6 +348,7 @@ nss_ndb_getpwent_r(void *rv, void *mdata, va_list ap) {
   goto Next;
 }
 
+#if 0
 static int
 nss_ndb_getpwent(void *rv, void *mdata, va_list ap) {
   struct passwd **ptr = rv;
@@ -384,7 +391,7 @@ nss_ndb_getpwent(void *rv, void *mdata, va_list ap) {
   
   return NS_NOTFOUND;
 }
-
+#endif
 
 static int
 nss_ndb_setpwent(void *rv, void *mdata, va_list ap) {
@@ -419,6 +426,9 @@ open_group_db(void) {
   
   if (!db_group_byname)
       db_group_byname = dbopen(path_group_byname, O_RDONLY, 0, DB_BTREE, NULL);
+  
+  if (!db_usergroups_byname)
+      db_usergroups_byname = dbopen(path_usergroups_byname, O_RDONLY, 0, DB_BTREE, NULL);
 }
 
 
@@ -582,6 +592,7 @@ nss_ndb_getgrnam_r(void *rv, void *mdata, va_list ap) {
   return NS_NOTFOUND;
 }
 
+
 static int
 nss_ndb_getgrent_r(void *rv, void *mdata, va_list ap) {
   struct group **ptr = rv;
@@ -594,6 +605,10 @@ nss_ndb_getgrent_r(void *rv, void *mdata, va_list ap) {
   int rc;
   DBT key, val;
   
+  
+#if DEBUG
+  fprintf(stderr, "*** nss_ndb_getgrent_r\n");
+#endif
   
   gbuf  = va_arg(ap, struct group *);
   buf   = va_arg(ap, char *);        
@@ -632,6 +647,7 @@ nss_ndb_getgrent_r(void *rv, void *mdata, va_list ap) {
   goto Next;
 }
 
+#if 0
 static int
 nss_ndb_getgrent(void *rv, void *mdata, va_list ap) {
   struct group **ptr = rv;
@@ -675,6 +691,7 @@ nss_ndb_getgrent(void *rv, void *mdata, va_list ap) {
 
   goto Next;
 }
+#endif
 
 
 static int
@@ -703,6 +720,93 @@ nss_ndb_endgrent(void *rv, void *mdata, va_list ap) {
 }
 
 
+static int
+gr_addgid(gid_t gid,
+	  gid_t *groupv,
+	  int maxgrp,
+	  int *groupc)
+{
+  int i, rc;
+  
+  for (i = 0; i < *groupc; i++) {
+    if (groupv[i] == gid)
+      return 1;
+  }
+  
+  rc = 1;
+  if (*groupc < maxgrp)
+    groupv[*groupc] = gid;
+  else
+    rc = 0;
+  
+  (*groupc)++;
+  
+  return rc;
+}
+
+/* 
+ * usergroups.byname.db format:
+ *   user:gid,gid,gid,...
+ */
+static int
+nss_ndb_getgroupmembership(void *res,
+			   void *mdata,
+			   va_list ap) {
+  char *name;
+  gid_t pgid;
+  gid_t *groupv;
+  int maxgrp, *groupc;
+  DBT key, val;
+  int rc;
+  char *members, *cp;
+  
+
+  name   = va_arg(ap, char *);
+  pgid   = va_arg(ap, gid_t);
+  groupv = va_arg(ap, gid_t *);
+  maxgrp = va_arg(ap, int);
+  groupc = va_arg(ap, int *);
+
+
+#if DEBUG
+  fprintf(stderr, "*** nss_ndb_getgroupmembership: name=%s, pgid=%u, maxgrp=%u, groupc=%u\n", name, pgid, maxgrp, groupc ? *groupc : -1);
+#endif
+  
+  open_group_db();
+  if (!db_usergroups_byname) {
+    /* XXX: Fall back to looping over all entries via getgrent_r()  */
+    return NS_UNAVAIL;
+  }
+  
+  /* Add primary gid to groupv[] */
+  gr_addgid(pgid, groupv, maxgrp, groupc);
+  
+  key.data = name;
+  key.size = strlen(name);
+
+  val.data = NULL;
+  val.size = 0;
+  
+  rc = db_usergroups_byname->get(db_usergroups_byname, &key, &val, 0);
+  if (rc < 0)
+    return NS_UNAVAIL;
+  else if (rc > 0)
+    return NS_NOTFOUND;
+#if DEBUG
+  fprintf(stderr, "*** nss_ndb_getgroupmembership: key=%.*s val=%.*s\n", (int) key.size, key.data, (int) val.size, val.data);
+#endif
+  members = val.data;
+
+  while ((cp = strsep(&members, ",")) != NULL) {
+    gid_t gid;
+
+    if (sscanf(cp, "%u", &gid) == 1)
+      gr_addgid(gid, groupv, maxgrp, groupc);
+  }
+  /* Let following nsswitch backend(s) add more groups(?) */
+  return NS_NOTFOUND;
+}
+  
 
 
 ns_mtab *
@@ -711,23 +815,59 @@ nss_module_register(const char *modname,
 		    nss_module_unregister_fn *fptr)
 {
   static ns_mtab mtab[] = {
-    { "passwd", "getpwuid_r", &nss_ndb_getpwuid_r, 0 },
-    { "passwd", "getpwnam_r", &nss_ndb_getpwnam_r, 0 },
-    { "passwd", "getpwent_r", &nss_ndb_getpwent_r, 0 },
-    { "passwd", "getpwent",   &nss_ndb_getpwent, 0 },
-    { "passwd", "setpwent",   &nss_ndb_setpwent, 0 },
-    { "passwd", "endpwent",   &nss_ndb_endpwent, 0 },
+    { "passwd", "getpwuid_r",          &nss_ndb_getpwuid_r, 0 },
+    { "passwd", "getpwnam_r",          &nss_ndb_getpwnam_r, 0 },
+    { "passwd", "getpwent_r",          &nss_ndb_getpwent_r, 0 },
+#if 0
+    { "passwd", "getpwent",            &nss_ndb_getpwent, 0 },
+#endif
+    { "passwd", "setpwent",            &nss_ndb_setpwent, 0 },
+    { "passwd", "endpwent",            &nss_ndb_endpwent, 0 },
 
-    { "group", "getgrgid_r", &nss_ndb_getgrgid_r, 0 },
-    { "group", "getgrnam_r", &nss_ndb_getgrnam_r, 0 },
-    { "group", "getgrent_r", &nss_ndb_getgrent_r, 0 },
-    { "group", "getgrent",   &nss_ndb_getgrent, 0 },
-    { "group", "setgrent",   &nss_ndb_setgrent, 0 },
-    { "group", "endgrent",   &nss_ndb_endgrent, 0 },
+    { "group", "getgrgid_r",           &nss_ndb_getgrgid_r, 0 },
+    { "group", "getgrnam_r",           &nss_ndb_getgrnam_r, 0 },
+    { "group", "getgrent_r",           &nss_ndb_getgrent_r, 0 },
+#if 0
+    { "group", "getgrent",             &nss_ndb_getgrent, 0 },
+#endif
+    { "group", "setgrent",             &nss_ndb_setgrent, 0 },
+    { "group", "endgrent",             &nss_ndb_endgrent, 0 },
+    { "group", "getgroupmembership",   &nss_ndb_getgroupmembership, 0 },
   };
   
-  *plen = 12;    /* one ns_mtab item */
+  *plen = 5+6;
   *fptr = NULL;  /* no cleanup needed */
   
   return mtab;
 }
+
+/*
+ * IMPLEMENTED:
+ *   passwd    getpwent(3), getpwent_r(3), getpwnam_r(3), getpwuid_r(3),
+ *             setpwent(3), endpwent(3)
+ *
+ *   group     getgrent(3), getgrent_r(3), getgrgid_r(3), getgrnam_r(3),
+ *             setgrent(3), endgrent(3)
+ *
+ * IN PROGRESS:
+ *   group     getgroupmembership(3)
+ *
+ * NOT IMPLEMENTED YET:
+ *   hosts     getaddrinfo(3), gethostbyaddr(3), gethostbyaddr_r(3),
+ *             gethostbyname(3), gethostbyname2(3), gethostbyname_r(3),
+ *             getipnodebyaddr(3), getipnodebyname(3)
+ *
+ *   networks  getnetbyaddr(3), getnetbyaddr_r(3), getnetbyname(3),
+ *             getnetbyname_r(3)
+ *
+ *   shells    getusershell(3)
+ *
+ *   services  getservent(3)
+ *
+ *   rpc       getrpcbyname(3), getrpcbynumber(3), getrpcent(3)
+ *
+ *   proto     getprotobyname(3), getprotobynumber(3), getprotoent(3)
+ *
+ *   netgroup  getnetgrent(3), getnetgrent_r(3), setnetgrent(3),
+ *             endnetgrent(3), innetgr(3)
+ */
