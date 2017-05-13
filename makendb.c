@@ -181,7 +181,8 @@ int
 main(int argc,
      char *argv[]) {
   DB *db_id = NULL, *db_name = NULL, *db_user = NULL, *db = NULL;
-  char buf[2048];
+  char *buf = NULL;
+  size_t bufsize = 64*1024*1024;
   DBT key, val;
   int rc, ni, line;
   char *name, *id, *cp;
@@ -191,6 +192,8 @@ main(int argc,
   char *delim = ":";
   int nw = 0;
   
+
+  buf = malloc(bufsize);
   
   for (i = 1; i < argc && argv[i][0] == '-'; i++) {
     for (j = 1; argv[i][j]; j++) {
@@ -281,8 +284,8 @@ main(int argc,
 	key.data = NULL;
 	key.size = 0;
 
-	val.data = buf;
-	val.size = sizeof(buf);
+	val.data = NULL;
+	val.size = 0;
 	
 	rc = db->seq(db, &key, &val, R_NEXT);
 	if (rc == 0) {
@@ -373,7 +376,7 @@ main(int argc,
   ni = 0;
   line = 0;
   
-  while (fgets(buf, sizeof(buf), stdin)) {
+  while (fgets(buf, bufsize, stdin)) {
     char *ptr = NULL;
 
     ++line;

@@ -311,9 +311,9 @@ nss_ndb_getpwent_r(void *rv, void *mdata, va_list ap) {
   DBT key, val;
   
   
-  pbuf  = va_arg(ap, struct passwd *);     /* struct passwd *pwd */
-  buf   = va_arg(ap, char *);             /* char *buffer */
-  bsize = va_arg(ap, size_t);              /* size_t bufsize */
+  pbuf  = va_arg(ap, struct passwd *);
+  buf   = va_arg(ap, char *);         
+  bsize = va_arg(ap, size_t);         
   res   = va_arg(ap, int *);
 
   *ptr = 0;

@@ -1,14 +1,16 @@
 Title:	 nss_ndb
-Version: 1.0
+Version: 1.0.2
 Author:  Peter Eriksson <pen@lysator.liu.se>
-Date:    2017-05-06
+Date:    2017-05-07
 
 
 DESCRIPTION
 
-This project consists of a NSS module (/usr/lib/nss_ndb.so.1) and a CLI utility (/usr/bin/makendb)
-that enables big passwd & group files to be handled efficiently via BTree databases stored
-in /var/db/nss_ndb/. Enable via the "ndb" keyword in /etc/nsswitch.conf
+This project consists of a NSS module (/usr/lib/nss_ndb.so.1) and a CLI
+utility (/usr/bin/makendb) that enables big passwd & group files to be
+handled efficiently via BTree databases stored in /var/db/nss_ndb/.
+
+Enable via the "ndb" keyword in /etc/nsswitch.conf
 
 Currently this project only supports FreeBSD (tested on 11).
 
@@ -41,6 +43,9 @@ USAGE
    passwd: files ndb
    group:  files ndb
 
-All done. You can dump the contents of the databases with "makendb -p path-to-database".
+All done. You can dump the contents of the databases with:
+
+  makendb -p path-to-database
+  
 Use "-h" for more command line switches/usage.
 
