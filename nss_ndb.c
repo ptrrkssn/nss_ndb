@@ -71,7 +71,16 @@ static __thread char *path_group_bygid   = PATH_NSS_NDB_GROUP_BY_GID;
 
 static __thread char *path_usergroups_byname = PATH_NSS_NDB_USERGROUPS_BY_NAME;
 
+enum pw_constants {
+  SETPWENT = 1,
+  ENDPWENT = 2
+};
 
+enum gr_constants {
+  SETGRENT = 1,
+  ENDGRENT = 2
+};
+  
 
 static void
 open_passwd_db(void) {
@@ -89,6 +98,7 @@ close_passwd_db(void) {
     db_passwd_byuid->close(db_passwd_byuid);
     db_passwd_byuid = NULL;
   }
+  
   if (db_passwd_byname) {
     db_passwd_byname->close(db_passwd_byname);
     db_passwd_byname = NULL;
@@ -142,6 +152,7 @@ str2passwd(char *str,
   static struct passwd pbuf;
   char *tmp, *btmp;
 
+  
   if (!str)
     return NULL;
   
@@ -215,6 +226,7 @@ nss_ndb_getpwuid_r(void *rv, void *mdata, va_list ap) {
   DBT key, val;
   int rc;
   int *res;
+
   
   uid   = va_arg(ap, uid_t);         
   pbuf  = va_arg(ap, struct passwd *);
@@ -222,12 +234,12 @@ nss_ndb_getpwuid_r(void *rv, void *mdata, va_list ap) {
   bsize = va_arg(ap, size_t);         
   res   = va_arg(ap, int *);
 
-  *ptr = 0;
-  
   open_passwd_db();
   if (!db_passwd_byuid)
     return NS_UNAVAIL;
 
+  *ptr = 0;
+  
   rc = snprintf(uidbuf, sizeof(uidbuf), "%u", uid);
   /* XXX Check return value */
   
@@ -253,6 +265,8 @@ nss_ndb_getpwuid_r(void *rv, void *mdata, va_list ap) {
   return NS_NOTFOUND;
 }
 
+
+
 static int
 nss_ndb_getpwnam_r(void *rv, void *mdata, va_list ap) {
   struct passwd **ptr = rv;
@@ -265,17 +279,18 @@ nss_ndb_getpwnam_r(void *rv, void *mdata, va_list ap) {
   int rc;
   int *res;
   
+
   name  = va_arg(ap, char *);
   pbuf  = va_arg(ap, struct passwd *);
   buf   = va_arg(ap, char *);         
   bsize = va_arg(ap, size_t);         
   res   = va_arg(ap, int *);
 
-  *ptr = 0;
-  
   open_passwd_db();
   if (!db_passwd_byname)
     return NS_UNAVAIL;
+  
+  *ptr = 0;
   
   key.data = name;
   key.size = strlen(name);
@@ -298,6 +313,8 @@ nss_ndb_getpwnam_r(void *rv, void *mdata, va_list ap) {
   return NS_NOTFOUND;
 }
 
+
+
 static int
 nss_ndb_getpwent_r(void *rv, void *mdata, va_list ap) {
   struct passwd **ptr = rv;
@@ -316,11 +333,11 @@ nss_ndb_getpwent_r(void *rv, void *mdata, va_list ap) {
   bsize = va_arg(ap, size_t);         
   res   = va_arg(ap, int *);
 
-  *ptr = 0;
-
   open_passwd_db();
   if (!db_passwd_byname)
     return NS_UNAVAIL;
+
+  *ptr = 0;
 
  Next:
   key.data = NULL;
@@ -348,61 +365,20 @@ nss_ndb_getpwent_r(void *rv, void *mdata, va_list ap) {
   goto Next;
 }
 
-#if 0
-static int
-nss_ndb_getpwent(void *rv, void *mdata, va_list ap) {
-  struct passwd **ptr = rv;
-  
-  static struct passwd pbuf;
-  char buf[2048], *bufptr;
-  size_t buflen;
-  int *res;
-  
-  int rc;
-  DBT key, val;
-  
-  
-  res = va_arg(ap, int *);
-  *ptr = 0;
 
-  open_passwd_db();
-  if (!db_passwd_byname)
-    return NS_UNAVAIL;
-  
-  key.data = NULL;
-  key.size = 0;
-
-  val.data = NULL;
-  val.size = 0;
-  
-  rc = db_passwd_byname->seq(db_passwd_byname, &key, &val, R_NEXT);
-  *res = errno;
-  
-  if (rc < 0)
-    return NS_UNAVAIL;
-  else if (rc > 0)
-    return NS_NOTFOUND;
-
-  bufptr = buf;
-  buflen = sizeof(buf);
-  *ptr = str2passwd(val.data, &pbuf, &bufptr, &buflen);
-  if (*ptr)
-    return NS_SUCCESS;
-  
-  return NS_NOTFOUND;
-}
-#endif
 
 static int
 nss_ndb_setpwent(void *rv, void *mdata, va_list ap) {
-  int *res;
+  int stayopen;
 
-  res   = va_arg(ap, int *);
+  stayopen = va_arg(ap, int);
 
-  open_passwd_db();
-  if (!db_passwd_byuid) {
-    *res = errno;
-    return NS_UNAVAIL;
+  close_passwd_db();
+  if ((enum pw_constants) mdata == SETPWENT) {
+    open_passwd_db();
+    if (!db_passwd_byuid) {
+      return NS_UNAVAIL;
+    }
   }
   
   return NS_SUCCESS;
@@ -441,6 +417,10 @@ close_group_db(void) {
   if (db_group_byname) {
     db_group_byname->close(db_group_byname);
     db_group_byname = NULL;
+  }
+  if (db_usergroups_byname) {
+    db_usergroups_byname->close(db_usergroups_byname);
+    db_usergroups_byname = NULL;
   }
 }
 
@@ -547,6 +527,8 @@ nss_ndb_getgrgid_r(void *rv, void *mdata, va_list ap) {
   return NS_NOTFOUND;
 }
 
+
+
 static int
 nss_ndb_getgrnam_r(void *rv, void *mdata, va_list ap) {
   struct group **ptr = rv;
@@ -615,11 +597,11 @@ nss_ndb_getgrent_r(void *rv, void *mdata, va_list ap) {
   bsize = va_arg(ap, size_t);        
   res   = va_arg(ap, int *);
 
-  *ptr = 0;
-
   open_group_db();
   if (!db_group_byname)
     return NS_UNAVAIL;
+
+  *ptr = 0;
 
  Next:
   key.data = NULL;
@@ -647,67 +629,25 @@ nss_ndb_getgrent_r(void *rv, void *mdata, va_list ap) {
   goto Next;
 }
 
-#if 0
-static int
-nss_ndb_getgrent(void *rv, void *mdata, va_list ap) {
-  struct group **ptr = rv;
-  
-  static struct group pbuf;
-  char buf[2048], *bufptr;
-  size_t buflen;
-  int *res;
-  
-  int rc;
-  DBT key, val;
-  
-  
-  res = va_arg(ap, int *);
-  *ptr = 0;
-
-  open_group_db();
-  if (!db_group_byname)
-    return NS_UNAVAIL;
-
- Next:
-  key.data = NULL;
-  key.size = 0;
-
-  val.data = NULL;
-  val.size = 0;
-  
-  rc = db_group_byname->seq(db_group_byname, &key, &val, R_NEXT);
-  *res = errno;
-  
-  if (rc < 0)
-    return NS_UNAVAIL;
-  else if (rc > 0)
-    return NS_NOTFOUND;
-
-  bufptr = buf;
-  buflen = sizeof(buf);
-  *ptr = str2group(val.data, &pbuf, &bufptr, &buflen);
-  if (*ptr)
-    return NS_SUCCESS;
-
-  goto Next;
-}
-#endif
 
 
 static int
 nss_ndb_setgrent(void *rv, void *mdata, va_list ap) {
-  int *res;
+  int stayopen;
 
-  res   = va_arg(ap, int *);
+  stayopen = va_arg(ap, int);
 
-  open_group_db();
-  if (!db_group_bygid) {
-    *res = errno;
-    return NS_UNAVAIL;
+  close_group_db();
+  if ((enum gr_constants) mdata == SETGRENT) {
+    open_group_db();
+    if (!db_group_bygid) {
+      return NS_UNAVAIL;
+    }
   }
   
   return NS_SUCCESS;
 }
+
 
 static int
 nss_ndb_endgrent(void *rv, void *mdata, va_list ap) {
@@ -818,18 +758,12 @@ nss_module_register(const char *modname,
     { "passwd", "getpwuid_r",          &nss_ndb_getpwuid_r, 0 },
     { "passwd", "getpwnam_r",          &nss_ndb_getpwnam_r, 0 },
     { "passwd", "getpwent_r",          &nss_ndb_getpwent_r, 0 },
-#if 0
-    { "passwd", "getpwent",            &nss_ndb_getpwent, 0 },
-#endif
     { "passwd", "setpwent",            &nss_ndb_setpwent, 0 },
     { "passwd", "endpwent",            &nss_ndb_endpwent, 0 },
 
     { "group", "getgrgid_r",           &nss_ndb_getgrgid_r, 0 },
     { "group", "getgrnam_r",           &nss_ndb_getgrnam_r, 0 },
     { "group", "getgrent_r",           &nss_ndb_getgrent_r, 0 },
-#if 0
-    { "group", "getgrent",             &nss_ndb_getgrent, 0 },
-#endif
     { "group", "setgrent",             &nss_ndb_setgrent, 0 },
     { "group", "endgrent",             &nss_ndb_endgrent, 0 },
     { "group", "getgroupmembership",   &nss_ndb_getgroupmembership, 0 },
