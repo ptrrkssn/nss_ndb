@@ -27,82 +27,170 @@
  */
 
 #include <stdio.h>
+#include <fcntl.h>
 #include <sys/types.h>
-#include <stdarg.h>
-#include <nsswitch.h>
 #include <pwd.h>
 #include <grp.h>
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
-
 #include <db.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <sys/stat.h>
+
+/* #include <stdarg.h> */
+/* #include <nsswitch.h> */
+
+#include "nss_ndb.h"
+
+#define MAX_GETENT_SIZE 1024
+#define MAX_GETOBJ_SIZE 32768
+
+static char *path_passwd_byname     = PATH_NSS_NDB_PASSWD_BY_NAME;
+static char *path_passwd_byuid      = PATH_NSS_NDB_PASSWD_BY_UID;
+static char *path_group_byname      = PATH_NSS_NDB_GROUP_BY_NAME;
+static char *path_group_bygid       = PATH_NSS_NDB_GROUP_BY_GID;
+static char *path_usergroups_byname = PATH_NSS_NDB_USERGROUPS_BY_NAME;
+
+typedef int (*STR2OBJ)(char *str, size_t len, void **vp, char **buf, size_t *blen, size_t maxsize);
 
 
-#ifndef PATH_NSS_NDB
-#define PATH_NSS_NDB "/var/db/nss_ndb"
+static __thread DB  *db_getpwent = NULL;
+static __thread DB  *db_getgrent = NULL;
+
+#if BTREEVERSION >= 9
+static __thread DBC *dbc_getpwent = NULL;
+static __thread DBC *dbc_getgrent = NULL;
 #endif
 
-#define PATH_NSS_NDB_PASSWD_BY_UID  PATH_NSS_NDB "/passwd.byuid.db"
-#define PATH_NSS_NDB_PASSWD_BY_NAME PATH_NSS_NDB "/passwd.byname.db"
-
-#define PATH_NSS_NDB_GROUP_BY_GID   PATH_NSS_NDB "/group.bygid.db"
-#define PATH_NSS_NDB_GROUP_BY_NAME  PATH_NSS_NDB "/group.byname.db"
-
-#define PATH_NSS_NDB_USERGROUPS_BY_NAME  PATH_NSS_NDB "/group.byuser.db"
 
 
-static __thread DB *db_passwd_byuid = NULL;
-static __thread DB *db_passwd_byname = NULL;
+static int
+ndb_get(DB *db,
+	DBT *key,
+	DBT *val,
+	int flags) {
+  if (!db)
+    return -1;
 
-static __thread DB *db_group_bygid = NULL;
-static __thread DB *db_group_byname = NULL;
+  /* XXX: key.flags = DB_DBT_USERMEM; */
 
-static __thread DB *db_usergroups_byname = NULL;
-
-
-static __thread char *path_passwd_byname = PATH_NSS_NDB_PASSWD_BY_NAME;
-static __thread char *path_passwd_byuid  = PATH_NSS_NDB_PASSWD_BY_UID;
-
-static __thread char *path_group_byname  = PATH_NSS_NDB_GROUP_BY_NAME;
-static __thread char *path_group_bygid   = PATH_NSS_NDB_GROUP_BY_GID;
-
-static __thread char *path_usergroups_byname = PATH_NSS_NDB_USERGROUPS_BY_NAME;
-
-enum pw_constants {
-  SETPWENT = 1,
-  ENDPWENT = 2
-};
-
-enum gr_constants {
-  SETGRENT = 1,
-  ENDGRENT = 2
-};
+  return db->get(db,
+#if BTREEVERSION >= 9
+		 NULL,
+#endif
+		 key, val, flags);
   
+}
 
 static void
-open_passwd_db(void) {
-  if (!db_passwd_byuid)
-      db_passwd_byuid = dbopen(path_passwd_byuid, O_RDONLY, 0, DB_BTREE, NULL);
+ndb_close(DB *db) {
+  if (!db)
+    return;
+
+  db->close(db
+#if BTREEVERSION >= 9
+	    , 0
+#endif
+	    );
+}
+
+static DB *
+ndb_open(const char *path) {
+  DB *db;
+#if BTREEVERSION >= 9
+  int ret;
+#endif
+
+#if DEBUG
+  fprintf(stderr, "*** ndb_open(%s)\n", path);
+#endif
+
+#if BTREEVERSION >= 9
+  ret = db_create(&db, NULL, 0);
+  if (ret) {
+#if DEBUG
+    fprintf(stderr, "\t -> db_create()  returned %d\n", ret);
+#endif
+    return NULL;
+  }
+
+  ret = db->open(db, NULL, path, NULL, DB_UNKNOWN, DB_RDONLY, 0);
+  if (ret) {
+#if DEBUG
+    fprintf(stderr, "\t -> db->open()  returned %d\n", ret);
+#endif
+    db->close(db, 0);
+    return NULL;
+  }
+#else
+  db = dbopen(path, O_RDONLY, 0, DB_BTREE, NULL);
+#endif
   
-  if (!db_passwd_byname)
-      db_passwd_byname = dbopen(path_passwd_byname, O_RDONLY, 0, DB_BTREE, NULL);
+#if DEBUG
+  fprintf(stderr, "\t -> db = %p\n", db);
+#endif
+  return db;
 }
 
 
-static void
-close_passwd_db(void) {
-  if (db_passwd_byuid) {
-    db_passwd_byuid->close(db_passwd_byuid);
-    db_passwd_byuid = NULL;
+
+
+static void *
+balloc(size_t size,
+       char **buf,
+       size_t *blen) {
+  if (size > *blen) {
+#if DEBUG
+    fprintf(stderr, "*** balloc(%lu) failed (available: %lu)\n", size, *blen);
+#endif
+    errno = ERANGE;
+    return NULL;
+  }
+
+  void *rptr = *buf;
+  *buf += size;
+  *blen -= size;
+
+  return rptr;
+}
+
+
+static int
+strsplit(char *buf,
+	 int sep,
+	 char *fv[],
+	 int fs) {
+  int n = 0;
+  char *cp;
+
+  
+  if (!buf)
+    return 0;
+  
+  while ((cp = strchr(buf, sep)) != NULL) {
+    if (n >= fs) {
+      errno = EOVERFLOW;
+      return -1;
+    }
+    
+    fv[n++] = buf;
+    *cp++ = '\0';
+    buf = cp;
+    
   }
   
-  if (db_passwd_byname) {
-    db_passwd_byname->close(db_passwd_byname);
-    db_passwd_byname = NULL;
+  if (n >= fs) {
+    errno = EOVERFLOW;
+    return -1;
   }
+    
+  fv[n++] = buf;
+  if (n < fs)
+    fv[n] = NULL;
+
+  return n;
 }
 
 
@@ -118,8 +206,10 @@ strbdup(const char *str,
     return NULL;
   
   len = strlen(str)+1;
-  if (len > *blen)
+  if (len > *blen) {
+    errno = ERANGE;
     return NULL;
+  }
 
   memcpy(rstr = *buf, str, len);
   *blen -= len;
@@ -128,536 +218,641 @@ strbdup(const char *str,
   return rstr;
 }
 
+/* -------------------------------------------------- */
 
-static void *
-balloc(size_t size,
-       char **buf,
-       size_t *blen) {
-  if (size > *blen)
-    return NULL;
-
-  void *rptr = *buf;
-  *buf += size;
-  *blen -= size;
-
-  return rptr;
-}
-
-
-static struct passwd *
+static int
 str2passwd(char *str,
+	   size_t size,
 	   struct passwd *pp,
 	   char **buf,
-	   size_t *blen) {
-  static struct passwd pbuf;
-  char *tmp, *btmp;
+	   size_t *blen,
+	   size_t maxsize) {
+  char *btmp;
+  char *fv[MAXPWFIELDS];
+  int fc, rc, i;
 
   
-  if (!str)
-    return NULL;
-  
-  if (!pp)
-    pp = &pbuf;
+  if (!str || !pp) {
+    errno = EINVAL;
+    return -1;
+  }
+
+#if DEBUG 
+  fprintf(stderr, "str2passwd(\"%.*s\", blen=%lu)\n", (int) size, str, *blen);
+#endif
 
   memset(pp, 0, sizeof(*pp));
 
-  str = btmp = strdup(str);
-  if (!str)
-    return NULL;
-  
-  pp->pw_name = strbdup(strsep(&str, ":"), buf, blen);
-  if (!pp->pw_name)
-    goto Fail;
-  
-  pp->pw_passwd = strbdup(strsep(&str, ":"), buf, blen);
-  if (!pp->pw_passwd)
-    goto Fail;
-  
-  tmp = strsep(&str, ":"); 
-  if (!tmp || sscanf(tmp, "%u", &pp->pw_uid) != 1)
-    goto Fail;
-  
-  tmp = strsep(&str, ":");
-  if (!tmp || sscanf(tmp, "%u", &pp->pw_gid) != 1)
-    goto Fail;
-  
-  pp->pw_class = strbdup(strsep(&str, ":"), buf, blen);
-  if (!pp->pw_class)
-    goto Fail;
-  
-  tmp = strsep(&str, ":");
-  if (!tmp || sscanf(tmp, "%lu", &pp->pw_change) != 1)
-    goto Fail;
-  
-  tmp = strsep(&str, ":");
-  if (!tmp || sscanf(tmp, "%lu", &pp->pw_expire) != 1)
-    goto Fail;
+  btmp = strndup(str, size);
+  if (!btmp) {
+    return -1;
+  }
 
-  pp->pw_gecos = strbdup(strsep(&str, ":"), buf, blen);
-  if (!pp->pw_gecos)
+  fc = strsplit(btmp, ':', fv, MAXPWFIELDS);
+  if (fc != 7
+#ifdef _PATH_MASTERPASSWD
+      && fc != 10
+#endif
+      ) {
     goto Fail;
+  }
+  
+  pp->pw_name = strbdup(fv[0], buf, blen);
+  if (!pp->pw_name) {
+    goto Fail;
+  }
+  
+  pp->pw_passwd = strbdup(fv[1], buf, blen);
+  if (!pp->pw_passwd) {
+    goto Fail;
+  }
+  
+  if ((rc = sscanf(fv[2], "%u", &pp->pw_uid)) != 1) {
+    errno = EINVAL;
+    goto Fail;
+  }
+  
+  if ((rc = sscanf(fv[3], "%u", &pp->pw_gid)) != 1) {
+    errno = EINVAL;
+    goto Fail;
+  }
 
-  pp->pw_dir = strbdup(strsep(&str, ":"), buf, blen);
-  if (!pp->pw_dir)
-    goto Fail;
+  i = 3;
   
-  pp->pw_shell = strbdup(strsep(&str, ":"), buf, blen);
-  if (!pp->pw_shell)
-    goto Fail;
+#ifdef _PATH_MASTERPASSWD
+  if (fc == 10) {
+    pp->pw_class = strbdup(fv[++i], buf, blen);
+    if (!pp->pw_class) {
+      goto Fail;
+    }
   
-  pp->pw_fields = 10;
-  return pp;
+    if ((rc = sscanf(fv[++i], "%lu", &pp->pw_change)) != 1) {
+      errno = EINVAL;
+      goto Fail;
+    }
+  
+    if ((rc = sscanf(fv[++i], "%lu", &pp->pw_expire)) != 1) {
+      errno = EINVAL;
+      goto Fail;
+    }
+  } else {
+    pp->pw_class = "";
+    pp->pw_change = 0;
+    pp->pw_expire = 0;
+  }
+#endif
+  
+  pp->pw_gecos = strbdup(fv[++i], buf, blen);
+  if (!pp->pw_gecos) {
+    goto Fail;
+  }
+  
+  pp->pw_dir = strbdup(fv[++i], buf, blen);
+  if (!pp->pw_dir) {
+    goto Fail;
+  }
+  
+  pp->pw_shell = strbdup(fv[++i], buf, blen);
+  if (!pp->pw_shell) {
+    goto Fail;
+  }
+  
+  free(btmp);
+  pp->pw_fields = fc;
+  return 0;
 
  Fail:
   free(btmp);
-  return NULL;
+  return -1;
+}
+
+
+
+static int
+str2group(char *str,
+	  size_t size,
+	  struct group *gp,
+	  char **buf,
+	  size_t *blen,
+	  size_t maxsize) {
+  char *tmp, *members, *btmp;
+  int ng = 0;
+  char *fv[MAXGRFIELDS];
+  int fc, rc, i;
+
+
+  if (!str || !gp) {
+    errno = EINVAL;
+    return -1;
+  }
+
+#if DEBUG
+  fprintf(stderr, "str2group(\"%.*s\", size=%lu, blen=%lu, maxsize=%lu)\n", (int) size, str, size, *blen, maxsize);
+#endif
+  
+  memset(gp, 0, sizeof(*gp));
+  
+  btmp = strndup(str, size);
+  if (!btmp)
+    return -1;
+  
+  fc = strsplit(btmp, ':', fv, MAXGRFIELDS);
+  if (fc != 4)
+    goto Fail;
+  
+  gp->gr_name = strbdup(fv[0], buf, blen);
+  if (!gp->gr_name)
+    goto Fail;
+  
+  gp->gr_passwd = strbdup(fv[1], buf, blen);
+  if (!gp->gr_passwd)
+    goto Fail;
+  
+  if ((rc = sscanf(fv[2], "%u", &gp->gr_gid)) != 1) {
+    errno = EINVAL;
+    goto Fail;
+  }
+
+  if (size < maxsize) {
+    members = fv[3];
+    if (members) {
+      char *cp;
+      
+      ++ng;
+      for (cp = members; *cp; cp++)
+	if (*cp == ',')
+	  ++ng;
+    }
+    
+    gp->gr_mem = balloc((ng+1)*sizeof(char *), buf, blen);
+    if (!gp->gr_mem) {
+      goto Fail;
+    }
+    
+    i = 0;
+    if (members) {
+      for (; (tmp = strsep(&members, ",")) != NULL; i++) {
+	gp->gr_mem[i] = strbdup(tmp, buf, blen);
+	if (!gp->gr_mem[i]) {
+	  goto Fail;
+	}
+      }
+    }
+  } else {
+    /* list of group members too big, give empty list */
+    
+    gp->gr_mem = balloc(2*sizeof(char *), buf, blen);
+    if (!gp->gr_mem) {
+      goto Fail;
+    }
+
+    gp->gr_mem[0] = strbdup("E$OVERSIZED-GROUP-USER-LIST", buf, blen);
+    if (!gp->gr_mem[0]) {
+      goto Fail;
+    }
+    i = 1;
+  }
+  
+  gp->gr_mem[i] = NULL;
+  return 0;
+
+ Fail:
+  free(btmp);
+  return -1;
+}
+
+/* ------------------------------------------------------------ */
+
+static int
+ndb_getkey_r(DB *db_getxxent,
+	     const char *path,
+	     STR2OBJ str2obj,
+	     void *rv,
+	     void *mdata,
+	     char *name,
+	     void *pbuf,
+	     char *buf,
+	     size_t bsize,
+	     int *res) {
+  void **ptr = rv;
+
+  DB *db;
+  DBT key, val;
+  int rc;
+  
+  if (db_getxxent)
+    db = db_getxxent;
+  else
+    db = ndb_open(path);
+  
+  if (!db)
+    return NS_UNAVAIL;
+  
+  *ptr = 0;
+  
+  memset(&key, 0, sizeof(key));
+  memset(&val, 0, sizeof(val));
+  
+  key.data = name;
+  key.size = strlen(name);
+  
+  rc = ndb_get(db, &key, &val, 0);
+  
+  if (rc < 0) {
+    *res = errno;
+    if (!db_getxxent)
+      ndb_close(db);
+    return NS_UNAVAIL;
+  }
+  else if (rc > 0) {
+    if (!db_getxxent)
+      ndb_close(db);
+    return NS_NOTFOUND;
+  }
+
+  if (!db_getxxent)
+    ndb_close(db);
+  
+  if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETOBJ_SIZE) < 0) {
+    *res = errno;
+
+#if DEBUG
+    if (errno == ERANGE)
+      fprintf(stderr, "ndb_getkey_r: val.data=\"%.10s...\", val.size=%lu, bsize=%lu\n",
+	      val.data, val.size, bsize);
+#endif
+    
+    return NS_NOTFOUND;
+  }
+
+  *ptr = pbuf;
+  return NS_SUCCESS;
+}
+  
+
+static int
+ndb_getent_r(DB **dbp,
+#if BTREEVERSION >= 9
+	     DBC **dbcp,
+#endif
+	     const char *dbpath,
+	     STR2OBJ str2obj,
+	     void *rv,
+	     void *mdata,
+	     void *pbuf,
+	     char *buf,
+	     size_t bsize,
+	     int *res) {
+  void **ptr = rv;
+  
+  int rc;
+  DBT key, val;
+  
+
+  if (!dbp
+#if BTREEVERSION >= 9
+      || !dbcp
+#endif
+      )
+    return NS_UNAVAIL;
+  
+  if (!*dbp)
+    *dbp = ndb_open(dbpath);
+  if (!*dbp)
+    return NS_UNAVAIL;
+
+#if BTREEVERSION >= 9
+  if (!*dbcp) {
+    if ((rc = (*dbp)->cursor(*dbp, NULL, dbcp, 0)) || !*dbcp) {
+#if DEBUG
+      fprintf(stderr, "\t -> cursor failed with rc=%d\n", rc);
+#endif
+      return NS_UNAVAIL;
+    }
+  }
+#endif
+  
+  *ptr = 0;
+
+  memset(&key, 0, sizeof(key));
+  memset(&val, 0, sizeof(val));
+
+#if BTREEVERSION >= 9
+  rc = (*dbcp)->get(*dbcp, &key, &val, DB_NEXT);
+#else
+  rc = (*dbp)->seq(*dbp, &key, &val, R_NEXT);
+#endif
+#if DEBUG
+  fprintf(stderr, "\t -> get() returned rc=%d\n", rc);
+#endif
+  
+  *res = errno;
+  
+  if (rc < 0) {
+#if BTREEVERSION >= 9
+    (*dbcp)->close(*dbcp);
+    *dbcp = NULL;
+#endif
+    
+    ndb_close(*dbp);
+    *dbp = NULL;
+    
+    return NS_UNAVAIL;
+  }
+  else if (rc > 0) {
+    return NS_NOTFOUND;
+  }
+
+  if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETENT_SIZE) < 0) {
+   *res = errno;
+
+#if DEBUG
+    if (errno == ERANGE)
+      fprintf(stderr, "ndb_getent_r: val.data=\"%.10s...\", errno==ERANGE, val.size=%lu, bsize=%lu\n",
+	      val.data, val.size, bsize);
+#endif
+    
+    /* XXX: If errno == ERANGE, go backwards one db record */
+    return NS_NOTFOUND;
+  }
+
+  *ptr = pbuf;
+  return NS_SUCCESS;
 }
 
 
 static int
-nss_ndb_getpwuid_r(void *rv, void *mdata, va_list ap) {
-  struct passwd **ptr = rv;
-  uid_t uid;
-  struct passwd *pbuf;
-  char *buf;
-  size_t bsize;
+ndb_setent(DB **dbp,
+#if BTREEVERSION >= 9
+	   DBC **dbcp,
+#endif
+	   int stayopen,
+	   const char *path,
+	   void *rv,
+	   void *mdata) {
+#if BTREEVERSION >= 9
+  if (*dbcp) {
+    (*dbcp)->close(*dbcp);
+    *dbcp = NULL;
+  }
+#endif
+  
+  if ((enum setent_constants) mdata == SETENT && stayopen)
+    return NS_SUCCESS;
+  
+  if (*dbp) {
+    ndb_close(*dbp);
+    *dbp = NULL;
+  }
+  
+  if ((enum setent_constants) mdata == SETENT) {
+    *dbp = ndb_open(path);
+    if (!*dbp)
+      return NS_UNAVAIL;
+  }
+  
+  return NS_SUCCESS;
+}
+
+
+
+static int
+ndb_endent(DB **dbp,
+#if BTREEVERSION >= 9
+	   DBC **dbcp,
+#endif
+	   void *rv,
+	   void *mdata,
+	   int *res) {
+  
+#if BTREEVERSION >= 9
+  if (*dbcp) {
+    (*dbcp)->close(*dbcp);
+    *dbcp = NULL;
+  }
+#endif
+  
+  if (*dbp) {
+    ndb_close(*dbp);
+    *dbp = NULL;
+  }
+  
+  return NS_SUCCESS;
+}
+
+
+/* ---------------------------------------------------------------------- */
+
+int
+nss_ndb_getpwnam_r(void *rv,
+		   void *mdata,
+		   va_list ap) {
+  char *name           = va_arg(ap, char *);
+  struct passwd *pbuf  = va_arg(ap, struct passwd *);
+  char *buf            = va_arg(ap, char *);
+  size_t bsize         = va_arg(ap, size_t);         
+  int *res             = va_arg(ap, int *);
+  
+  return ndb_getkey_r(db_getpwent,
+		      path_passwd_byname,
+		      (STR2OBJ) str2passwd,
+		      rv, mdata,
+		      name, pbuf, buf, bsize, res);
+}
+
+
+int
+nss_ndb_getpwuid_r(void *rv,
+		   void *mdata,
+		   va_list ap) {
+  uid_t uid            = va_arg(ap, uid_t);
+  struct passwd *pbuf  = va_arg(ap, struct passwd *);
+  char *buf            = va_arg(ap, char *);
+  size_t bsize         = va_arg(ap, size_t);         
+  int *res             = va_arg(ap, int *);
+
   char uidbuf[64];
-  
-  DBT key, val;
   int rc;
-  int *res;
 
-  
-  uid   = va_arg(ap, uid_t);         
-  pbuf  = va_arg(ap, struct passwd *);
-  buf   = va_arg(ap, char *);         
-  bsize = va_arg(ap, size_t);         
-  res   = va_arg(ap, int *);
-
-  open_passwd_db();
-  if (!db_passwd_byuid)
-    return NS_UNAVAIL;
-
-  *ptr = 0;
   
   rc = snprintf(uidbuf, sizeof(uidbuf), "%u", uid);
   /* XXX Check return value */
   
-  key.data = uidbuf;
-  key.size = strlen(uidbuf);
-
-  val.data = NULL;
-  val.size = 0;
-  
-  rc = db_passwd_byuid->get(db_passwd_byuid, &key, &val, 0);
-  
-  if (rc < 0) {
-    *res = errno;
-    return NS_UNAVAIL;
-  }
-  else if (rc > 0)
-    return NS_NOTFOUND;
-
-  *ptr = str2passwd(val.data, pbuf, &buf, &bsize);
-  if (*ptr)
-    return NS_SUCCESS;
-  
-  return NS_NOTFOUND;
+  return ndb_getkey_r(db_getpwent,
+		      path_passwd_byuid,
+		      (STR2OBJ) str2passwd,
+		      rv, mdata,
+		      uidbuf, pbuf, buf, bsize, res);
 }
 
 
-
-static int
-nss_ndb_getpwnam_r(void *rv, void *mdata, va_list ap) {
-  struct passwd **ptr = rv;
-  struct passwd *pbuf;
-  char *buf;
-  size_t bsize;
-  char *name;
-  
-  DBT key, val;
-  int rc;
-  int *res;
-  
-
-  name  = va_arg(ap, char *);
-  pbuf  = va_arg(ap, struct passwd *);
-  buf   = va_arg(ap, char *);         
-  bsize = va_arg(ap, size_t);         
-  res   = va_arg(ap, int *);
-
-  open_passwd_db();
-  if (!db_passwd_byname)
-    return NS_UNAVAIL;
-  
-  *ptr = 0;
-  
-  key.data = name;
-  key.size = strlen(name);
-
-  val.data = NULL;
-  val.size = 0;
-  
-  rc = db_passwd_byname->get(db_passwd_byname, &key, &val, 0);
-  *res = errno;
-  
-  if (rc < 0)
-    return NS_UNAVAIL;
-  else if (rc > 0)
-    return NS_NOTFOUND;
-
-  *ptr = str2passwd(val.data, pbuf, &buf, &bsize);
-  if (*ptr)
-    return NS_SUCCESS;
-  
-  return NS_NOTFOUND;
-}
-
-
-
-static int
-nss_ndb_getpwent_r(void *rv, void *mdata, va_list ap) {
-  struct passwd **ptr = rv;
-  
-  struct passwd *pbuf;
-  char *buf;
-  size_t bsize;
-  int *res;
-  
-  int rc;
-  DBT key, val;
-  
-  
-  pbuf  = va_arg(ap, struct passwd *);
-  buf   = va_arg(ap, char *);         
-  bsize = va_arg(ap, size_t);         
-  res   = va_arg(ap, int *);
-
-  open_passwd_db();
-  if (!db_passwd_byname)
-    return NS_UNAVAIL;
-
-  *ptr = 0;
-
- Next:
-  key.data = NULL;
-  key.size = 0;
-
-  val.data = NULL;
-  val.size = 0;
-  
-  rc = db_passwd_byname->seq(db_passwd_byname, &key, &val, R_NEXT);
-  *res = errno;
-  
-  if (rc < 0)
-    return NS_UNAVAIL;
-  else if (rc > 0)
-    return NS_NOTFOUND;
-
-  *ptr = str2passwd(val.data, pbuf, &buf, &bsize);
-  if (*ptr)
-    return NS_SUCCESS;
+int
+nss_ndb_getpwent_r(void *rv,
+		   void *mdata,
+		   va_list ap) {
+  struct passwd *pbuf = va_arg(ap, struct passwd *);
+  char *buf           = va_arg(ap, char *);         
+  size_t bsize        = va_arg(ap, size_t);         
+  int *res            = va_arg(ap, int *);
 
 #if DEBUG
-    fprintf(stderr, "*** nss_ndb_getpwent_r: str2passwd failed on: %s\n", val.data);
+  fprintf(stderr, "*** getpwent(pbuf=%p, buf=%p, bsize=%lu, res=%p)\n",
+	  pbuf, buf, bsize, res);
 #endif
-    
-  goto Next;
+
+  return ndb_getent_r(&db_getpwent,
+#if BTREEVERSION >= 9
+    &dbc_getpwent,
+#endif
+    path_passwd_byname,
+    (STR2OBJ) str2passwd,
+    rv, mdata,
+    pbuf, buf, bsize, res);
 }
 
 
+int
+nss_ndb_setpwent(void *rv,
+		 void *mdata,
+		 va_list ap) {
+  int stayopen = va_arg(ap, int);
 
-static int
-nss_ndb_setpwent(void *rv, void *mdata, va_list ap) {
-  int stayopen;
-
-  stayopen = va_arg(ap, int);
-
-  close_passwd_db();
-  if ((enum pw_constants) mdata == SETPWENT) {
-    open_passwd_db();
-    if (!db_passwd_byuid) {
-      return NS_UNAVAIL;
-    }
-  }
+#if DEBUG
+  fprintf(stderr, "*** setpwent(stayopen=%d, mdata=%d)\n",
+	  stayopen, (int) mdata);
+#endif
   
-  return NS_SUCCESS;
-}
-
-static int
-nss_ndb_endpwent(void *rv, void *mdata, va_list ap) {
-  int *res;
-
-  res = va_arg(ap, int *);
-
-  close_passwd_db();
-  return NS_SUCCESS;
+  return ndb_setent(&db_getpwent,
+#if BTREEVERSION >= 9
+    &dbc_getpwent,
+#endif
+    stayopen, path_passwd_byname,
+    rv, mdata);
 }
 
 
-static void
-open_group_db(void) {
-  if (!db_group_bygid)
-      db_group_bygid = dbopen(path_group_bygid, O_RDONLY, 0, DB_BTREE, NULL);
+int
+nss_ndb_endpwent(void *rv,
+		 void *mdata,
+		 va_list ap) {
+  int *res = va_arg(ap, int *);
+
+#if DEBUG
+  fprintf(stderr, "*** endpwent()\n");
+#endif
   
-  if (!db_group_byname)
-      db_group_byname = dbopen(path_group_byname, O_RDONLY, 0, DB_BTREE, NULL);
-  
-  if (!db_usergroups_byname)
-      db_usergroups_byname = dbopen(path_usergroups_byname, O_RDONLY, 0, DB_BTREE, NULL);
+  return ndb_endent(&db_getpwent,
+#if BTREEVERSION >= 9
+    &dbc_getpwent,
+#endif
+    rv, mdata, res);
 }
 
 
-static void
-close_group_db(void) {
-  if (db_group_bygid) {
-    db_group_bygid->close(db_group_bygid);
-    db_group_bygid = NULL;
-  }
-  if (db_group_byname) {
-    db_group_byname->close(db_group_byname);
-    db_group_byname = NULL;
-  }
-  if (db_usergroups_byname) {
-    db_usergroups_byname->close(db_usergroups_byname);
-    db_usergroups_byname = NULL;
-  }
+/* ---------------------------------------------------------------------- */
+
+int
+nss_ndb_getgrnam_r(void *rv,
+		   void *mdata,
+		   va_list ap) {
+  char *name          = va_arg(ap, char *);
+  struct group *gbuf  = va_arg(ap, struct group *);
+  char *buf           = va_arg(ap, char *);
+  size_t bsize        = va_arg(ap, size_t);         
+  int *res            = va_arg(ap, int *);
+  
+  return ndb_getkey_r(db_getgrent,
+		      path_group_byname,
+		      (STR2OBJ) str2group,
+		      rv, mdata,
+		      name, gbuf, buf, bsize, res);
 }
 
 
+int
+nss_ndb_getgrgid_r(void *rv,
+		   void *mdata,
+		   va_list ap) {
+  gid_t gid          = va_arg(ap, gid_t);
+  struct group *gbuf = va_arg(ap, struct group *);
+  char *buf          = va_arg(ap, char *);
+  size_t bsize       = va_arg(ap, size_t);
+  int *res           = va_arg(ap, int *);
 
-static struct group *
-str2group(char *str,
-	  struct group *gp,
-	  char **buf,
-	  size_t *blen) {
-  static struct group gbuf;
-  char *tmp, *members, *btmp;
-  int i;
-
-
-  if (!str)
-    return NULL;
-  
-  if (!gp)
-    gp = &gbuf;
-
-  str = btmp = strdup(str);
-  if (!str)
-    return NULL;
-  
-  memset(gp, 0, sizeof(*gp));
-  
-  gp->gr_name = strbdup(strsep(&str, ":"), buf, blen);
-  if (!gp->gr_name)
-    goto Fail;
-  
-  gp->gr_passwd = strbdup(strsep(&str, ":"), buf, blen);
-  if (!gp->gr_passwd)
-    goto Fail;
-  
-  tmp = strsep(&str, ":");
-  if (!tmp || sscanf(tmp, "%u", &gp->gr_gid) != 1)
-    goto Fail;
-  
-  members = strsep(&str, ":");
-
-  gp->gr_mem = balloc(64*sizeof(char *), buf, blen);
-  i = 0;
-  while ((tmp = strsep(&members, ",")) != NULL) {
-    gp->gr_mem[i++] = strbdup(tmp, buf, blen);
-    /* XXX: Handle overflow */
-  }
-  gp->gr_mem[i] = NULL;
-
-  return gp;
-
- Fail:
-  free(btmp);
-  return NULL;
-}
-
-
-static int
-nss_ndb_getgrgid_r(void *rv, void *mdata, va_list ap) {
-  gid_t gid;
-  struct group **ptr = rv;
-  struct group *gbuf;
-  char *buf;
-  size_t bsize;
   char gidbuf[64];
-  DBT key, val;
   int rc;
-  int *res;
   
-  gid   = va_arg(ap, gid_t);
-  gbuf  = va_arg(ap, struct group *);
-  buf   = va_arg(ap, char *);
-  bsize = va_arg(ap, size_t);
-  res   = va_arg(ap, int *);
-
-  *ptr = 0;
-  
-  open_group_db();
-  if (!db_group_bygid)
-    return NS_UNAVAIL;
-
   rc = snprintf(gidbuf, sizeof(gidbuf), "%u", gid);
-  /* XXX: Check rc return value */
+  /* XXX Check return value */
   
-  key.data = gidbuf;
-  key.size = strlen(gidbuf);
-
-  val.data = NULL;
-  val.size = 0;
-  
-  rc = db_group_bygid->get(db_group_bygid, &key, &val, 0);
-  
-  if (rc < 0) {
-    *res = errno;
-    return NS_UNAVAIL;
-  }
-  else if (rc > 0)
-    return NS_NOTFOUND;
-
-  *ptr = str2group(val.data, gbuf, &buf, &bsize);
-  if (*ptr)
-    return NS_SUCCESS;
-  
-  return NS_NOTFOUND;
+  return ndb_getkey_r(db_getgrent,
+		      path_group_bygid,
+		      (STR2OBJ) str2group,
+		      rv, mdata,
+		      gidbuf, gbuf, buf, bsize, res);
 }
 
 
+int
+nss_ndb_getgrent_r(void *rv,
+		   void *mdata,
+		   va_list ap) {
+  struct group *gbuf = va_arg(ap, struct group *);
+  char *buf          = va_arg(ap, char *);         
+  size_t bsize       = va_arg(ap, size_t);         
+  int *res           = va_arg(ap, int *);
 
-static int
-nss_ndb_getgrnam_r(void *rv, void *mdata, va_list ap) {
-  struct group **ptr = rv;
-  struct group *gbuf;
-  char *buf;
-  size_t bsize;
-  char *name;
-  
-  DBT key, val;
-  int rc;
-  int *res;
-  
-  name  = va_arg(ap, char *);
-  gbuf  = va_arg(ap, struct group *);
-  buf   = va_arg(ap, char *);        
-  bsize = va_arg(ap, size_t);        
-  res   = va_arg(ap, int *);
-
-  *ptr = 0;
-  
-  open_group_db();
-  if (!db_group_byname)
-    return NS_UNAVAIL;
-  
-  key.data = name;
-  key.size = strlen(name);
-
-  val.data = NULL;
-  val.size = 0;
-  
-  rc = db_group_byname->get(db_group_byname, &key, &val, 0);
-  *res = errno;
-  
-  if (rc < 0)
-    return NS_UNAVAIL;
-  else if (rc > 0)
-    return NS_NOTFOUND;
-
-  *ptr = str2group(val.data, gbuf, &buf, &bsize);
-  if (*ptr)
-    return NS_SUCCESS;
-  
-  return NS_NOTFOUND;
-}
-
-
-static int
-nss_ndb_getgrent_r(void *rv, void *mdata, va_list ap) {
-  struct group **ptr = rv;
-  
-  struct group *gbuf;
-  char *buf;
-  size_t bsize;
-  int *res;
-  
-  int rc;
-  DBT key, val;
-  
   
 #if DEBUG
-  fprintf(stderr, "*** nss_ndb_getgrent_r\n");
+  fprintf(stderr, "*** getgrent(gbuf=%p, buf=%p, bsize=%lu, res=%p)\n",
+	  gbuf, buf, bsize, res);
 #endif
-  
-  gbuf  = va_arg(ap, struct group *);
-  buf   = va_arg(ap, char *);        
-  bsize = va_arg(ap, size_t);        
-  res   = va_arg(ap, int *);
 
-  open_group_db();
-  if (!db_group_byname)
-    return NS_UNAVAIL;
+  return ndb_getent_r(&db_getgrent,
+#if BTREEVERSION >= 9
+    &dbc_getgrent,
+#endif
+    path_group_byname,
+    (STR2OBJ) str2group,
+    rv, mdata,
+    gbuf, buf, bsize, res);
+}
 
-  *ptr = 0;
 
- Next:
-  key.data = NULL;
-  key.size = 0;
+int
+nss_ndb_setgrent(void *rv,
+		 void *mdata,
+		 va_list ap) {
+  int stayopen = va_arg(ap, int);
 
-  val.data = NULL;
-  val.size = 0;
-  
-  rc = db_group_byname->seq(db_group_byname, &key, &val, R_NEXT);
-  *res = errno;
+  return ndb_setent(&db_getgrent,
+#if BTREEVERSION >= 9
+    &dbc_getgrent,
+#endif
+    stayopen, path_group_byname,
+    rv, mdata);
+}  
 
-  if (rc < 0)
-    return NS_UNAVAIL;
-  else if (rc > 0)
-    return NS_NOTFOUND;
 
-  *ptr = str2group(val.data, gbuf, &buf, &bsize);
-  if (*ptr)
-    return NS_SUCCESS;
+int
+nss_ndb_endgrent(void *rv,
+		 void *mdata,
+		 va_list ap) {
+  int *res = va_arg(ap, int *);
 
 #if DEBUG
-    fprintf(stderr, "*** nss_ndb_getgrent_r: str2group failed on: %s\n", val.data);
+  fprintf(stderr, "*** endgrent()\n");
 #endif
-    
-  goto Next;
-}
-
-
-
-static int
-nss_ndb_setgrent(void *rv, void *mdata, va_list ap) {
-  int stayopen;
-
-  stayopen = va_arg(ap, int);
-
-  close_group_db();
-  if ((enum gr_constants) mdata == SETGRENT) {
-    open_group_db();
-    if (!db_group_bygid) {
-      return NS_UNAVAIL;
-    }
-  }
   
-  return NS_SUCCESS;
+  return ndb_endent(&db_getgrent,
+#if BTREEVERSION >= 9
+    &dbc_getgrent,
+#endif
+    rv, mdata, res);
 }
 
 
-static int
-nss_ndb_endgrent(void *rv, void *mdata, va_list ap) {
-  int *res;
-
-  res = va_arg(ap, int *);
-
-  close_group_db();
-  return NS_SUCCESS;
-}
+/* ---------------------------------------------------------------------- */
 
 
 static int
@@ -667,59 +862,55 @@ gr_addgid(gid_t gid,
 	  int *groupc)
 {
   int i, rc;
-  
+
+  /* Do not add if already added */
   for (i = 0; i < *groupc; i++) {
     if (groupv[i] == gid)
-      return 1;
+      return *groupc;
   }
   
-  rc = 1;
-  if (*groupc < maxgrp)
+  rc = 0;
+  if (*groupc < maxgrp) {
     groupv[*groupc] = gid;
-  else
-    rc = 0;
+    (*groupc)++;
+  } else
+    rc = -1;
   
-  (*groupc)++;
-  
-  return rc;
+  return (rc < 0 ? rc : *groupc);
 }
+
 
 /* 
  * usergroups.byname.db format:
  *   user:gid,gid,gid,...
  */
-static int
+int
 nss_ndb_getgroupmembership(void *res,
 			   void *mdata,
 			   va_list ap) {
-  char *name;
-  gid_t pgid;
-  gid_t *groupv;
-  int maxgrp, *groupc;
+  char *name    = va_arg(ap, char *);
+  gid_t pgid    = va_arg(ap, gid_t);
+  gid_t *groupv = va_arg(ap, gid_t *);
+  int maxgrp    = va_arg(ap, int);
+  int *groupc   = va_arg(ap, int *);
+  
+  DB *db;
   DBT key, val;
   int rc;
   char *members, *cp;
   
 
-  name   = va_arg(ap, char *);
-  pgid   = va_arg(ap, gid_t);
-  groupv = va_arg(ap, gid_t *);
-  maxgrp = va_arg(ap, int);
-  groupc = va_arg(ap, int *);
-
-
-#if DEBUG
-  fprintf(stderr, "*** nss_ndb_getgroupmembership: name=%s, pgid=%u, maxgrp=%u, groupc=%u\n", name, pgid, maxgrp, groupc ? *groupc : -1);
-#endif
-  
-  open_group_db();
-  if (!db_usergroups_byname) {
+  db = ndb_open(path_usergroups_byname);
+  if (!db) {
     /* XXX: Fall back to looping over all entries via getgrent_r()  */
     return NS_UNAVAIL;
   }
   
   /* Add primary gid to groupv[] */
   gr_addgid(pgid, groupv, maxgrp, groupc);
+
+  memset(&key, 0, sizeof(key));
+  memset(&val, 0, sizeof(val));
   
   key.data = name;
   key.size = strlen(name);
@@ -727,26 +918,36 @@ nss_ndb_getgroupmembership(void *res,
   val.data = NULL;
   val.size = 0;
   
-  rc = db_usergroups_byname->get(db_usergroups_byname, &key, &val, 0);
-  if (rc < 0)
+  rc = ndb_get(db, &key, &val, 0);
+  if (rc < 0) {
+    ndb_close(db);
     return NS_UNAVAIL;
-  else if (rc > 0)
-    return NS_NOTFOUND;
-#if DEBUG
-  fprintf(stderr, "*** nss_ndb_getgroupmembership: key=%.*s val=%.*s\n", (int) key.size, key.data, (int) val.size, val.data);
-#endif
-  members = val.data;
-
-  while ((cp = strsep(&members, ",")) != NULL) {
-    gid_t gid;
-
-    if (sscanf(cp, "%u", &gid) == 1)
-      gr_addgid(gid, groupv, maxgrp, groupc);
   }
+  else if (rc > 0) {
+    ndb_close(db);
+    return NS_NOTFOUND;
+  }
+
+  ndb_close(db);
+  
+  members = strchr(val.data, ':');
+  if (members) {
+    ++members;
+
+    while ((cp = strsep(&members, ",")) != NULL) {
+      gid_t gid;
+      
+      if (sscanf(cp, "%u", &gid) == 1)
+	gr_addgid(gid, groupv, maxgrp, groupc);
+    }
+  }
+  
   /* Let following nsswitch backend(s) add more groups(?) */
   return NS_NOTFOUND;
 }
-  
+
+
+/* ---------------------------------------------------------------------- */
 
 
 ns_mtab *
@@ -805,3 +1006,44 @@ nss_module_register(const char *modname,
  *   netgroup  getnetgrent(3), getnetgrent_r(3), setnetgrent(3),
  *             endnetgrent(3), innetgr(3)
  */
+
+#if DEBUG > 1
+int
+main(int argc,
+     char *argv[])
+{
+  int i;
+
+  
+  for (i = 1; i < argc; i++) {
+    struct passwd pbuf, *pp;
+    char buf[1024], *bptr = buf;
+    size_t blen = sizeof(buf);
+    int rc;
+    
+    rc = str2passwd(argv[i], strlen(argv[i]), &pbuf, &bptr, &blen);
+    if (rc < 0) {
+      fprintf(stderr, "str2passwd(\"%s\"): %s\n", argv[i], strerror(errno));
+      exit(1);
+    }
+
+    pp = &pbuf;
+    printf("pp->pw_name   = %s\n", pp->pw_name);
+    printf("pp->pw_passwd = %s\n", pp->pw_passwd);
+    printf("pp->pw_uid    = %u\n", pp->pw_uid);
+    printf("pp->pw_gid    = %u\n", pp->pw_gid);
+#ifdef _PATH_MASTERPASSWD
+    printf("pp->pw_class  = %s\n", pp->pw_class);
+    printf("pp->pw_change = %ld\n", pp->pw_change);
+    printf("pp->pw_expire = %ld\n", pp->pw_expire);
+#endif
+    printf("pp->pw_gecos  = %s\n", pp->pw_gecos);
+    printf("pp->pw_dir    = %s\n", pp->pw_dir);
+    printf("pp->pw_shell  = %s\n", pp->pw_shell);
+#ifdef _PATH_MASTERPASSWD
+    printf("pp->pw_fields = %d\n", pp->pw_fields);
+#endif
+  }
+  return 0;
+}
+#endif

@@ -28,16 +28,26 @@
 DEST=/usr
 
 PACKAGE=nss_ndb
-VERSION=1.0.2
 
-LIB=nss_ndb.so.1
+# DEBUG="-DDEBUG=2"
+
+VERSION=1.0.4
+INCARGS=
+LIBARGS=
+
+# VERSION=1.6
+# INCARGS=-I/usr/local/include/db6
+# LIBARGS=-L/usr/local/lib/db6 -ldb
+
+CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
+CFLAGS=-fPIC -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) $(DEBUG) 
+LDFLAGS=-g -G $(LIBARGS) 
+
+LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
 
 BIN=makendb
 BINOBJS=makendb.o
-
-CFLAGS=-fPIC -g -Wall -DVERSION="\"$(VERSION)\""
-LDFLAGS=-G
 
 all: $(LIB) $(BIN)
 
@@ -45,13 +55,13 @@ $(LIB): $(LIBOBJS)
 	$(LD) $(LDFLAGS) -o $(LIB) $(LIBOBJS)
 
 $(BIN): $(BINOBJS)
-	$(CC) -o $(BIN) $(BINOBJS)
+	$(CC) -g -o $(BIN) $(BINOBJS)
 
 clean:
-	-rm -f *~ \#* *.o core *.core
+	-rm -f *~ \#* *.o *.core core
 
 distclean: clean
-	-rm -f $(LIB) $(BIN)
+	-rm -f *.so.* $(BIN)
 
 install: $(LIB) $(BIN)
 	$(INSTALL) -o root -g wheel -m 0444 $(LIB) $(DEST)/lib

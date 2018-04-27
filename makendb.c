@@ -36,6 +36,9 @@
 #include <string.h>
 #include <pwd.h>
 #include <ctype.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 int debug_f = 0;
 int print_f = 0;
@@ -80,8 +83,8 @@ version(FILE *fp) {
 
 int
 add_user_group(DB *db,
-		   char *gid,
-		   char *members) {
+	       char *gid,
+	       char *members) {
   DBT key, val;
   char *cp;
   int rc;
@@ -134,7 +137,8 @@ add_user_group(DB *db,
 	
 	strcat(buf, ",");
 	strcat(buf, gid);
-	
+
+	memset(&val, 0, sizeof(val));
 	val.data = buf;
 	val.size = strlen(buf)+1;
 	
@@ -159,6 +163,8 @@ add_user_group(DB *db,
 	return -1;
 
       snprintf(buf, 128, "%s:%s", cp, gid);
+      
+      memset(&val, 0, sizeof(val));
       val.data = buf;
       val.size = strlen(buf)+1;
       
@@ -182,18 +188,17 @@ main(int argc,
      char *argv[]) {
   DB *db_id = NULL, *db_name = NULL, *db_user = NULL, *db = NULL;
   char *buf = NULL;
-  size_t bufsize = 64*1024*1024;
   DBT key, val;
-  int rc, ni, line;
+  int rc, ni, line, fd;
   char *name, *id, *cp;
   char *type = NULL;
   char path[2048], *p_name, *p_id, *p_user;
   int i, j;
   char *delim = ":";
   int nw = 0;
+  ssize_t len;
+  struct stat sb;
   
-
-  buf = malloc(bufsize);
   
   for (i = 1; i < argc && argv[i][0] == '-'; i++) {
     for (j = 1; argv[i][j]; j++) {
@@ -244,7 +249,7 @@ main(int argc,
 	goto NextArg;
 	
       case 'h':
-	printf("Usage: %s [-h] [-V] [-v] [-u] [-p] [-k] [-T passwd|group] [-D <delim>] <db-path>\n", argv[0]);
+	printf("Usage: %s [-h] [-V] [-v] [-u] [-p] [-k] [-T passwd|group] [-D <delim>] <db-path> <src-file>\n", argv[0]);
 	exit(0);
 	
       default:
@@ -376,14 +381,56 @@ main(int argc,
   ni = 0;
   line = 0;
   
-  while (fgets(buf, bufsize, stdin)) {
+  ++i;
+  if (i >= argc) {
+    fprintf(stderr, "%s: Missing required source file\n", argv[0]);
+    exit(1);
+  }
+
+  fd = open(argv[i], O_RDONLY);
+  if (fd < 0) {
+    fprintf(stderr, "%s: Error: %s: open failed: %s\n", argv[0], argv[i], strerror(errno));
+    exit(1);
+  }
+  
+  if (fstat(fd, &sb) < 0) {
+    fprintf(stderr, "%s: Error: %s: fstat failed: %s\n", argv[0], argv[i], strerror(errno));
+    exit(1);
+  }
+  
+  buf = malloc(sb.st_size+1);
+  if (!buf) {
+    fprintf(stderr, "%s: Error: malloc(%lu bytes) failed: %s\n", argv[0], sb.st_size+1, strerror(errno));
+    exit(1);
+  }
+  
+  len = read(fd, buf, sb.st_size);
+  if (len < 0) {
+    fprintf(stderr, "%s: Error: read(%lu bytes) failed: %s\n", argv[0], sb.st_size, strerror(errno));
+    exit(1);
+  }
+  
+  buf[len] = 0;
+  close(fd);
+
+  cp = buf;
+  while ((buf = cp) && *buf) {
     char *ptr = NULL;
+    
+    cp = strchr(buf, '\n');
+    if (cp)
+      *cp++ = 0;
+    else
+      cp = buf+strlen(buf);
 
     ++line;
     trim(buf);
     if (*buf == '#' || !*buf)
       continue;
 
+    if (debug_f)
+      printf("[%s]\n", buf);
+    
     val.data = strdup(buf);
     val.size = strlen(buf)+1;
 
@@ -394,16 +441,18 @@ main(int argc,
       (void) strsep(&ptr, delim); /* ignore pass */
       id = strsep(&ptr, delim);
 
-      key.data = id;
-      key.size = strlen(id);
-      
-      rc = db_id->put(db_id, &key, &val, unique_f ? R_NOOVERWRITE : 0);
-      if (rc < 0) {
-	fprintf(stderr, "%s: %s: %s: db->put: %s\n", argv[0], p_id, id, strerror(errno));
-	exit(1);
-      } else if (rc > 0) {
-	fprintf(stderr, "%s: %s: %s: Key already exists in database\n", argv[0], p_id, id);
-	nw++;
+      if (id) {
+	key.data = id;
+	key.size = strlen(id);
+	
+	rc = db_id->put(db_id, &key, &val, unique_f ? R_NOOVERWRITE : 0);
+	if (rc < 0) {
+	  fprintf(stderr, "%s: %s: %s: db->put: %s\n", argv[0], p_id, id, strerror(errno));
+	  exit(1);
+	} else if (rc > 0) {
+	  fprintf(stderr, "%s: %s: %s: Key already exists in database\n", argv[0], p_id, id);
+	  nw++;
+	}
       }
     }
     
