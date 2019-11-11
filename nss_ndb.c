@@ -842,6 +842,9 @@ nss_ndb_getgroupmembership(void *res,
   char *members, *cp;
   
 
+  if (name == NULL)
+    return NS_NOTFOUND;
+  
   if (_ndb_open(&ndb_grp_byuser, path_usergroups_byname, 0) < 0) {
     /* Fall back to looping over all entries via getgrent_r() - slooooow */
     return NS_UNAVAIL;
@@ -872,8 +875,8 @@ nss_ndb_getgroupmembership(void *res,
   /* Should not happen */
   if (val.data == NULL)
     return NS_UNAVAIL;
-  
-  members = strchr(val.data, ':');
+
+  members = memchr(val.data, ':', val.size);
   if (members) {
     ++members;
 
