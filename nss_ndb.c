@@ -1,7 +1,7 @@
 /*
  * nss_ndb.c - NSS interface to Berkeley DB databases for passwd & group
  *
- * Copyright (c) 2017 Peter Eriksson <pen@lysator.liu.se>
+ * Copyright (c) 2017-2018 Peter Eriksson <pen@lysator.liu.se>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -27,6 +27,7 @@
  */
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <pwd.h>
@@ -34,14 +35,12 @@
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
-#include <db.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 
-/* #include <stdarg.h> */
-/* #include <nsswitch.h> */
-
+#include "ndb.h"
 #include "nss_ndb.h"
 
 #define MAX_GETENT_SIZE 1024
@@ -53,98 +52,19 @@ static char *path_group_byname      = PATH_NSS_NDB_GROUP_BY_NAME;
 static char *path_group_bygid       = PATH_NSS_NDB_GROUP_BY_GID;
 static char *path_usergroups_byname = PATH_NSS_NDB_USERGROUPS_BY_NAME;
 
-typedef int (*STR2OBJ)(char *str, size_t len, void **vp, char **buf, size_t *blen, size_t maxsize);
+static __thread NDB ndb_pwd_byname;
+static __thread NDB ndb_pwd_byuid;
 
+static __thread NDB ndb_grp_byname;
+static __thread NDB ndb_grp_bygid;
+static __thread NDB ndb_grp_byuser;
 
-static __thread DB  *db_getpwent = NULL;
-static __thread DB  *db_getgrent = NULL;
-
-#if BTREEVERSION >= 9
-static __thread DBC *dbc_getpwent = NULL;
-static __thread DBC *dbc_getgrent = NULL;
-#endif
-
-
-
-static int
-ndb_get(DB *db,
-	DBT *key,
-	DBT *val,
-	int flags) {
-  if (!db)
-    return -1;
-
-  /* XXX: key.flags = DB_DBT_USERMEM; */
-
-  return db->get(db,
-#if BTREEVERSION >= 9
-		 NULL,
-#endif
-		 key, val, flags);
-  
-}
-
-static void
-ndb_close(DB *db) {
-  if (!db)
-    return;
-
-  db->close(db
-#if BTREEVERSION >= 9
-	    , 0
-#endif
-	    );
-}
-
-static DB *
-ndb_open(const char *path) {
-  DB *db;
-#if BTREEVERSION >= 9
-  int ret;
-#endif
-
-#if DEBUG
-  fprintf(stderr, "*** ndb_open(%s)\n", path);
-#endif
-
-#if BTREEVERSION >= 9
-  ret = db_create(&db, NULL, 0);
-  if (ret) {
-#if DEBUG
-    fprintf(stderr, "\t -> db_create()  returned %d\n", ret);
-#endif
-    return NULL;
-  }
-
-  ret = db->open(db, NULL, path, NULL, DB_UNKNOWN, DB_RDONLY, 0);
-  if (ret) {
-#if DEBUG
-    fprintf(stderr, "\t -> db->open()  returned %d\n", ret);
-#endif
-    db->close(db, 0);
-    return NULL;
-  }
-#else
-  db = dbopen(path, O_RDONLY, 0, DB_BTREE, NULL);
-#endif
-  
-#if DEBUG
-  fprintf(stderr, "\t -> db = %p\n", db);
-#endif
-  return db;
-}
-
-
-
-
+
 static void *
 balloc(size_t size,
        char **buf,
        size_t *blen) {
   if (size > *blen) {
-#if DEBUG
-    fprintf(stderr, "*** balloc(%lu) failed (available: %lu)\n", size, *blen);
-#endif
     errno = ERANGE;
     return NULL;
   }
@@ -218,8 +138,7 @@ strbdup(const char *str,
   return rstr;
 }
 
-/* -------------------------------------------------- */
-
+
 static int
 str2passwd(char *str,
 	   size_t size,
@@ -236,10 +155,6 @@ str2passwd(char *str,
     errno = EINVAL;
     return -1;
   }
-
-#if DEBUG 
-  fprintf(stderr, "str2passwd(\"%.*s\", blen=%lu)\n", (int) size, str, *blen);
-#endif
 
   memset(pp, 0, sizeof(*pp));
 
@@ -346,10 +261,6 @@ str2group(char *str,
     return -1;
   }
 
-#if DEBUG
-  fprintf(stderr, "str2group(\"%.*s\", size=%lu, blen=%lu, maxsize=%lu)\n", (int) size, str, size, *blen, maxsize);
-#endif
-  
   memset(gp, 0, sizeof(*gp));
   
   btmp = strndup(str, size);
@@ -421,10 +332,170 @@ str2group(char *str,
   return -1;
 }
 
-/* ------------------------------------------------------------ */
 
+
+int
+_ndb_get(NDB *ndb,
+	 DBT *key,
+	 DBT *val,
+	 int flags) {
+  if (!ndb)
+    return -1;
+
+  /* XXX: key.flags = DB_DBT_USERMEM; */
+
+  if (!key->data) {
+#if DB_VERSION_MAJOR < 4
+    return ndb->db->seq(ndb->db, key, val, flags);
+#else
+    return ndb->dbc->get(ndb->dbc, key, val, flags);
+#endif
+  } else {
+    return ndb->db->get(ndb->db,
+#if DB_VERSION_MAJOR >= 4
+			NULL,
+#endif
+			key, val, flags);
+  }
+}
+
+int
+_ndb_put(NDB *ndb,
+	 DBT *key,
+	 DBT *val,
+	 int flags) {
+  if (!ndb)
+    return -1;
+
+  /* XXX: key.flags = DB_DBT_USERMEM; */
+
+  return ndb->db->put(ndb->db,
+#if DB_VERSION_MAJOR >= 4
+		 NULL,
+#endif
+		 key, val, flags);
+  
+}
+
+
+
+void
+_ndb_close(NDB *ndb) {
+  if (!ndb)
+    return;
+
+#if DEBUG
+  fprintf(stderr, "_ndb_close(%p) [%s])\n",
+	  ndb,
+	  ndb && ndb->path ? ndb->path : "<null>");
+#endif
+
+#if DB_VERSION_MAJOR >= 4
+  if (ndb->dbc) {
+    ndb->dbc->close(ndb->dbc);
+  }
+#endif
+  
+  if (ndb->db) {
+    ndb->db->close(ndb->db
+#if DB_VERSION_MAJOR >= 4
+		   , 0
+#endif
+		   );
+  }
+
+  if (ndb->path) {
+    free(ndb->path);
+  }
+
+  memset(ndb, 0, sizeof(*ndb));
+}
+
+
+int
+_ndb_open(NDB *ndb,
+	  const char *path,
+	  int rdwr_f) {
+#if DB_VERSION_MAJOR >= 4
+  int ret;
+#endif
+  pid_t pid = getpid();
+
+#if DEBUG
+  fprintf(stderr, "_ndb_open(%p, \"%s\") -> ", ndb, path);
+#endif
+  
+  if (!ndb->db || ndb->pid != pid) {
+    memset(ndb, 0, sizeof(*ndb));
+    ndb->pid = pid;
+    
+#if DB_VERSION_MAJOR >= 4
+    ret = db_env_create(&ndb->dbe, 0);
+    if (ret) {
+#if DEBUG
+      fprintf(stderr, "FAIL (db_env_create)\n");
+#endif
+      return -1;
+    }
+    
+    ret = db_create(&ndb->db, NULL, 0);
+    if (ret) {
+#if DEBUG
+      fprintf(stderr, "FAIL (db_create)\n");
+#endif
+      
+      ndb->dbe->close(ndb->dbe, 0);
+      ndb->dbe = NULL;
+      
+      return -1;
+    }
+
+#if DEBUG
+    fprintf(stderr, "created -> ");
+#endif
+
+    ret = ndb->db->open(ndb->db, NULL, path, NULL, DB_BTREE, (rdwr_f ? DB_CREATE : DB_RDONLY), 0644);
+    if (ret) {
+#if DEBUG
+      fprintf(stderr, "FAIL (db->open)\n");
+#endif
+      
+      ndb->db->close(ndb->db, 0);
+      ndb->db = NULL;
+      
+      ndb->dbe->close(ndb->dbe, 0);
+      ndb->dbe = NULL;
+      
+      return -1;
+    }
+
+    /* XXX: DB_Env - do locking */
+    
+#else
+    ndb->db = dbopen(path, (rdwr_f ? O_RDWR|O_CREAT|O_EXLOCK : O_RDONLY|O_SHLOCK), 0644, DB_BTREE, NULL);
+    if (!ndb->db) {
+#if DEBUG
+      fprintf(stderr, "FAIL (dbopen)\n");
+#endif
+      return -1;
+    }
+#endif
+
+#if DEBUG
+    fprintf(stderr, "opened -> ");
+#endif
+  }
+  
+  ndb->path = strdup(path);
+#if DEBUG
+  fprintf(stderr, "%p\n", ndb);
+#endif
+  return 0;
+}
+
+
 static int
-ndb_getkey_r(DB *db_getxxent,
+_ndb_getkey_r(NDB *ndb,
 	     const char *path,
 	     STR2OBJ str2obj,
 	     void *rv,
@@ -436,16 +507,10 @@ ndb_getkey_r(DB *db_getxxent,
 	     int *res) {
   void **ptr = rv;
 
-  DB *db;
   DBT key, val;
   int rc;
   
-  if (db_getxxent)
-    db = db_getxxent;
-  else
-    db = ndb_open(path);
-  
-  if (!db)
+  if (_ndb_open(ndb, path, 0) < 0)
     return NS_UNAVAIL;
   
   *ptr = 0;
@@ -456,32 +521,19 @@ ndb_getkey_r(DB *db_getxxent,
   key.data = name;
   key.size = strlen(name);
   
-  rc = ndb_get(db, &key, &val, 0);
+  rc = _ndb_get(ndb, &key, &val, 0);
+  *res = errno;
   
-  if (rc < 0) {
-    *res = errno;
-    if (!db_getxxent)
-      ndb_close(db);
+  if (!ndb->stayopen)
+    _ndb_close(ndb);
+  
+  if (rc < 0)
     return NS_UNAVAIL;
-  }
-  else if (rc > 0) {
-    if (!db_getxxent)
-      ndb_close(db);
+  else if (rc > 0)
     return NS_NOTFOUND;
-  }
-
-  if (!db_getxxent)
-    ndb_close(db);
   
   if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETOBJ_SIZE) < 0) {
     *res = errno;
-
-#if DEBUG
-    if (errno == ERANGE)
-      fprintf(stderr, "ndb_getkey_r: val.data=\"%.10s...\", val.size=%lu, bsize=%lu\n",
-	      val.data, val.size, bsize);
-#endif
-    
     return NS_NOTFOUND;
   }
 
@@ -491,11 +543,8 @@ ndb_getkey_r(DB *db_getxxent,
   
 
 static int
-ndb_getent_r(DB **dbp,
-#if BTREEVERSION >= 9
-	     DBC **dbcp,
-#endif
-	     const char *dbpath,
+_ndb_getent_r(NDB *ndb,
+	     const char *path,
 	     STR2OBJ str2obj,
 	     void *rv,
 	     void *mdata,
@@ -509,24 +558,12 @@ ndb_getent_r(DB **dbp,
   DBT key, val;
   
 
-  if (!dbp
-#if BTREEVERSION >= 9
-      || !dbcp
-#endif
-      )
-    return NS_UNAVAIL;
-  
-  if (!*dbp)
-    *dbp = ndb_open(dbpath);
-  if (!*dbp)
+  if (_ndb_open(ndb, path, 0) < 0) 
     return NS_UNAVAIL;
 
-#if BTREEVERSION >= 9
-  if (!*dbcp) {
-    if ((rc = (*dbp)->cursor(*dbp, NULL, dbcp, 0)) || !*dbcp) {
-#if DEBUG
-      fprintf(stderr, "\t -> cursor failed with rc=%d\n", rc);
-#endif
+#if DB_VERSION_MAJOR >= 4
+  if (!ndb->dbc) {
+    if ((rc = ndb->db->cursor(ndb->db, NULL, &ndb->dbc, 0)) || !ndb->dbc) {
       return NS_UNAVAIL;
     }
   }
@@ -537,42 +574,29 @@ ndb_getent_r(DB **dbp,
   memset(&key, 0, sizeof(key));
   memset(&val, 0, sizeof(val));
 
-#if BTREEVERSION >= 9
-  rc = (*dbcp)->get(*dbcp, &key, &val, DB_NEXT);
+#if DB_VERSION_MAJOR >= 4
+  rc = ndb->dbc->get(ndb->dbc, &key, &val, ndb->prev_f ? DB_PREV : DB_NEXT);
 #else
-  rc = (*dbp)->seq(*dbp, &key, &val, R_NEXT);
+  rc = ndb->db->seq(ndb->db, &key, &val, ndb->prev_f ? R_PREV : R_NEXT);
 #endif
-#if DEBUG
-  fprintf(stderr, "\t -> get() returned rc=%d\n", rc);
-#endif
-  
   *res = errno;
+
+  ndb->prev_f = 0;
   
   if (rc < 0) {
-#if BTREEVERSION >= 9
-    (*dbcp)->close(*dbcp);
-    *dbcp = NULL;
-#endif
-    
-    ndb_close(*dbp);
-    *dbp = NULL;
-    
+    _ndb_close(ndb);
     return NS_UNAVAIL;
-  }
-  else if (rc > 0) {
+  } else if (rc > 0) {
     return NS_NOTFOUND;
   }
 
   if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETENT_SIZE) < 0) {
    *res = errno;
 
-#if DEBUG
-    if (errno == ERANGE)
-      fprintf(stderr, "ndb_getent_r: val.data=\"%.10s...\", errno==ERANGE, val.size=%lu, bsize=%lu\n",
-	      val.data, val.size, bsize);
-#endif
-    
-    /* XXX: If errno == ERANGE, go backwards one db record */
+   /* If errno == ERANGE (data can't fit in buffer), retry same record next time */
+   if (errno == ERANGE)
+     ndb->prev_f = 1;
+   
     return NS_NOTFOUND;
   }
 
@@ -581,68 +605,29 @@ ndb_getent_r(DB **dbp,
 }
 
 
-static int
-ndb_setent(DB **dbp,
-#if BTREEVERSION >= 9
-	   DBC **dbcp,
-#endif
-	   int stayopen,
-	   const char *path,
-	   void *rv,
-	   void *mdata) {
-#if BTREEVERSION >= 9
-  if (*dbcp) {
-    (*dbcp)->close(*dbcp);
-    *dbcp = NULL;
-  }
-#endif
+int
+_ndb_setent(NDB *ndb,
+	    int stayopen,
+	    const char *path) {
+  _ndb_close(ndb);
   
-  if ((enum setent_constants) mdata == SETENT && stayopen)
-    return NS_SUCCESS;
-  
-  if (*dbp) {
-    ndb_close(*dbp);
-    *dbp = NULL;
-  }
-  
-  if ((enum setent_constants) mdata == SETENT) {
-    *dbp = ndb_open(path);
-    if (!*dbp)
-      return NS_UNAVAIL;
-  }
-  
+  if (_ndb_open(ndb, path, 0) < 0)
+    return NS_UNAVAIL;
+
+  ndb->stayopen = stayopen;
   return NS_SUCCESS;
 }
 
 
 
-static int
-ndb_endent(DB **dbp,
-#if BTREEVERSION >= 9
-	   DBC **dbcp,
-#endif
-	   void *rv,
-	   void *mdata,
-	   int *res) {
-  
-#if BTREEVERSION >= 9
-  if (*dbcp) {
-    (*dbcp)->close(*dbcp);
-    *dbcp = NULL;
-  }
-#endif
-  
-  if (*dbp) {
-    ndb_close(*dbp);
-    *dbp = NULL;
-  }
-  
+int
+_ndb_endent(NDB *ndb) {
+  _ndb_close(ndb);
   return NS_SUCCESS;
 }
 
 
-/* ---------------------------------------------------------------------- */
-
+
 int
 nss_ndb_getpwnam_r(void *rv,
 		   void *mdata,
@@ -652,8 +637,8 @@ nss_ndb_getpwnam_r(void *rv,
   char *buf            = va_arg(ap, char *);
   size_t bsize         = va_arg(ap, size_t);         
   int *res             = va_arg(ap, int *);
-  
-  return ndb_getkey_r(db_getpwent,
+
+  return _ndb_getkey_r(&ndb_pwd_byname,
 		      path_passwd_byname,
 		      (STR2OBJ) str2passwd,
 		      rv, mdata,
@@ -678,7 +663,7 @@ nss_ndb_getpwuid_r(void *rv,
   rc = snprintf(uidbuf, sizeof(uidbuf), "%u", uid);
   /* XXX Check return value */
   
-  return ndb_getkey_r(db_getpwent,
+  return _ndb_getkey_r(&ndb_pwd_byuid,
 		      path_passwd_byuid,
 		      (STR2OBJ) str2passwd,
 		      rv, mdata,
@@ -695,19 +680,11 @@ nss_ndb_getpwent_r(void *rv,
   size_t bsize        = va_arg(ap, size_t);         
   int *res            = va_arg(ap, int *);
 
-#if DEBUG
-  fprintf(stderr, "*** getpwent(pbuf=%p, buf=%p, bsize=%lu, res=%p)\n",
-	  pbuf, buf, bsize, res);
-#endif
-
-  return ndb_getent_r(&db_getpwent,
-#if BTREEVERSION >= 9
-    &dbc_getpwent,
-#endif
-    path_passwd_byname,
-    (STR2OBJ) str2passwd,
-    rv, mdata,
-    pbuf, buf, bsize, res);
+  return _ndb_getent_r(&ndb_pwd_byname,
+		      path_passwd_byname,
+		      (STR2OBJ) str2passwd,
+		      rv, mdata,
+		      pbuf, buf, bsize, res);
 }
 
 
@@ -717,17 +694,9 @@ nss_ndb_setpwent(void *rv,
 		 va_list ap) {
   int stayopen = va_arg(ap, int);
 
-#if DEBUG
-  fprintf(stderr, "*** setpwent(stayopen=%d, mdata=%d)\n",
-	  stayopen, (int) mdata);
-#endif
-  
-  return ndb_setent(&db_getpwent,
-#if BTREEVERSION >= 9
-    &dbc_getpwent,
-#endif
-    stayopen, path_passwd_byname,
-    rv, mdata);
+  return _ndb_setent(&ndb_pwd_byname,
+		    stayopen,
+		    path_passwd_byname);
 }
 
 
@@ -735,22 +704,15 @@ int
 nss_ndb_endpwent(void *rv,
 		 void *mdata,
 		 va_list ap) {
+#if 0
   int *res = va_arg(ap, int *);
-
-#if DEBUG
-  fprintf(stderr, "*** endpwent()\n");
 #endif
   
-  return ndb_endent(&db_getpwent,
-#if BTREEVERSION >= 9
-    &dbc_getpwent,
-#endif
-    rv, mdata, res);
+  return _ndb_endent(&ndb_pwd_byname);
 }
 
 
-/* ---------------------------------------------------------------------- */
-
+
 int
 nss_ndb_getgrnam_r(void *rv,
 		   void *mdata,
@@ -761,7 +723,7 @@ nss_ndb_getgrnam_r(void *rv,
   size_t bsize        = va_arg(ap, size_t);         
   int *res            = va_arg(ap, int *);
   
-  return ndb_getkey_r(db_getgrent,
+  return _ndb_getkey_r(&ndb_grp_byname,
 		      path_group_byname,
 		      (STR2OBJ) str2group,
 		      rv, mdata,
@@ -785,7 +747,7 @@ nss_ndb_getgrgid_r(void *rv,
   rc = snprintf(gidbuf, sizeof(gidbuf), "%u", gid);
   /* XXX Check return value */
   
-  return ndb_getkey_r(db_getgrent,
+  return _ndb_getkey_r(&ndb_grp_bygid,
 		      path_group_bygid,
 		      (STR2OBJ) str2group,
 		      rv, mdata,
@@ -803,19 +765,11 @@ nss_ndb_getgrent_r(void *rv,
   int *res           = va_arg(ap, int *);
 
   
-#if DEBUG
-  fprintf(stderr, "*** getgrent(gbuf=%p, buf=%p, bsize=%lu, res=%p)\n",
-	  gbuf, buf, bsize, res);
-#endif
-
-  return ndb_getent_r(&db_getgrent,
-#if BTREEVERSION >= 9
-    &dbc_getgrent,
-#endif
-    path_group_byname,
-    (STR2OBJ) str2group,
-    rv, mdata,
-    gbuf, buf, bsize, res);
+  return _ndb_getent_r(&ndb_grp_byname,
+		      path_group_byname,
+		      (STR2OBJ) str2group,
+		      rv, mdata,
+		      gbuf, buf, bsize, res);
 }
 
 
@@ -825,36 +779,25 @@ nss_ndb_setgrent(void *rv,
 		 va_list ap) {
   int stayopen = va_arg(ap, int);
 
-  return ndb_setent(&db_getgrent,
-#if BTREEVERSION >= 9
-    &dbc_getgrent,
-#endif
-    stayopen, path_group_byname,
-    rv, mdata);
-}  
+  return _ndb_setent(&ndb_grp_byname,
+		     stayopen,
+		     path_group_byname);
+}
 
 
 int
 nss_ndb_endgrent(void *rv,
 		 void *mdata,
 		 va_list ap) {
+#if 0
   int *res = va_arg(ap, int *);
-
-#if DEBUG
-  fprintf(stderr, "*** endgrent()\n");
 #endif
   
-  return ndb_endent(&db_getgrent,
-#if BTREEVERSION >= 9
-    &dbc_getgrent,
-#endif
-    rv, mdata, res);
+  return _ndb_endent(&ndb_grp_byname);
 }
 
 
-/* ---------------------------------------------------------------------- */
-
-
+
 static int
 gr_addgid(gid_t gid,
 	  gid_t *groupv,
@@ -894,15 +837,13 @@ nss_ndb_getgroupmembership(void *res,
   int maxgrp    = va_arg(ap, int);
   int *groupc   = va_arg(ap, int *);
   
-  DB *db;
   DBT key, val;
   int rc;
   char *members, *cp;
   
 
-  db = ndb_open(path_usergroups_byname);
-  if (!db) {
-    /* XXX: Fall back to looping over all entries via getgrent_r()  */
+  if (_ndb_open(&ndb_grp_byuser, path_usergroups_byname, 0) < 0) {
+    /* Fall back to looping over all entries via getgrent_r() - slooooow */
     return NS_UNAVAIL;
   }
   
@@ -918,17 +859,19 @@ nss_ndb_getgroupmembership(void *res,
   val.data = NULL;
   val.size = 0;
   
-  rc = ndb_get(db, &key, &val, 0);
+  rc = _ndb_get(&ndb_grp_byuser, &key, &val, 0);
+  _ndb_close(&ndb_grp_byuser);
+
   if (rc < 0) {
-    ndb_close(db);
     return NS_UNAVAIL;
   }
   else if (rc > 0) {
-    ndb_close(db);
     return NS_NOTFOUND;
   }
 
-  ndb_close(db);
+  /* Should not happen */
+  if (val.data == NULL)
+    return NS_UNAVAIL;
   
   members = strchr(val.data, ':');
   if (members) {
@@ -946,10 +889,7 @@ nss_ndb_getgroupmembership(void *res,
   return NS_NOTFOUND;
 }
 
-
-/* ---------------------------------------------------------------------- */
-
-
+
 ns_mtab *
 nss_module_register(const char *modname,
 		    unsigned int *plen,
@@ -976,6 +916,7 @@ nss_module_register(const char *modname,
   return mtab;
 }
 
+
 /*
  * IMPLEMENTED:
  *   passwd    getpwent(3), getpwent_r(3), getpwnam_r(3), getpwuid_r(3),
@@ -984,7 +925,6 @@ nss_module_register(const char *modname,
  *   group     getgrent(3), getgrent_r(3), getgrgid_r(3), getgrnam_r(3),
  *             setgrent(3), endgrent(3)
  *
- * IN PROGRESS:
  *   group     getgroupmembership(3)
  *
  * NOT IMPLEMENTED YET:
@@ -1007,43 +947,3 @@ nss_module_register(const char *modname,
  *             endnetgrent(3), innetgr(3)
  */
 
-#if DEBUG > 1
-int
-main(int argc,
-     char *argv[])
-{
-  int i;
-
-  
-  for (i = 1; i < argc; i++) {
-    struct passwd pbuf, *pp;
-    char buf[1024], *bptr = buf;
-    size_t blen = sizeof(buf);
-    int rc;
-    
-    rc = str2passwd(argv[i], strlen(argv[i]), &pbuf, &bptr, &blen);
-    if (rc < 0) {
-      fprintf(stderr, "str2passwd(\"%s\"): %s\n", argv[i], strerror(errno));
-      exit(1);
-    }
-
-    pp = &pbuf;
-    printf("pp->pw_name   = %s\n", pp->pw_name);
-    printf("pp->pw_passwd = %s\n", pp->pw_passwd);
-    printf("pp->pw_uid    = %u\n", pp->pw_uid);
-    printf("pp->pw_gid    = %u\n", pp->pw_gid);
-#ifdef _PATH_MASTERPASSWD
-    printf("pp->pw_class  = %s\n", pp->pw_class);
-    printf("pp->pw_change = %ld\n", pp->pw_change);
-    printf("pp->pw_expire = %ld\n", pp->pw_expire);
-#endif
-    printf("pp->pw_gecos  = %s\n", pp->pw_gecos);
-    printf("pp->pw_dir    = %s\n", pp->pw_dir);
-    printf("pp->pw_shell  = %s\n", pp->pw_shell);
-#ifdef _PATH_MASTERPASSWD
-    printf("pp->pw_fields = %d\n", pp->pw_fields);
-#endif
-  }
-  return 0;
-}
-#endif

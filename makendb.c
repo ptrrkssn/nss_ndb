@@ -40,6 +40,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "nss_ndb.h"
+#include "ndb.h"
+
 int debug_f = 0;
 int print_f = 0;
 int unique_f = 0;
@@ -82,7 +85,7 @@ version(FILE *fp) {
 
 
 int
-add_user_group(DB *db,
+add_user_group(NDB *db,
 	       char *gid,
 	       char *members) {
   DBT key, val;
@@ -103,7 +106,7 @@ add_user_group(DB *db,
     val.data = NULL;
     val.size = 0;
 
-    rc = db->get(db, &key, &val, 0);
+    rc = _ndb_get(db, &key, &val, 0);
     if (rc == 0) {
       /* Old record - append */
       int found;
@@ -142,7 +145,7 @@ add_user_group(DB *db,
 	val.data = buf;
 	val.size = strlen(buf)+1;
 	
-	rc = db->put(db, &key, &val, 0);
+	rc = _ndb_put(db, &key, &val, 0);
 	if (rc < 0) {
 	  if (debug_f)
 	    fprintf(stderr, "*** add_user_group: %.*s: db->put: %s\n", (int) key.size, key.data, strerror(errno));
@@ -168,7 +171,7 @@ add_user_group(DB *db,
       val.data = buf;
       val.size = strlen(buf)+1;
       
-      rc = db->put(db, &key, &val, 0);
+      rc = _ndb_put(db, &key, &val, 0);
       if (rc < 0) {
 	if (debug_f)
 	  fprintf(stderr, "*** add_user_group: %.*s: db->put: %s\n", (int) key.size, key.data, strerror(errno));
@@ -186,11 +189,10 @@ add_user_group(DB *db,
 int
 main(int argc,
      char *argv[]) {
-  DB *db_id = NULL, *db_name = NULL, *db_user = NULL, *db = NULL;
-  char *buf = NULL;
+  NDB db_id, db_name, db_user, db;
   DBT key, val;
-  int rc, ni, line, fd;
-  char *name, *id, *cp;
+  int rc, ni,line, fd;
+  char *name, *id, *cp, *buf;
   char *type = NULL;
   char path[2048], *p_name, *p_id, *p_user;
   int i, j;
@@ -199,6 +201,10 @@ main(int argc,
   ssize_t len;
   struct stat sb;
   
+  memset(&db_id, 0, sizeof(db_id));
+  memset(&db_name, 0, sizeof(db_name));
+  memset(&db_user, 0, sizeof(db_user));
+  memset(&db, 0, sizeof(db));
   
   for (i = 1; i < argc && argv[i][0] == '-'; i++) {
     for (j = 1; argv[i][j]; j++) {
@@ -268,52 +274,57 @@ main(int argc,
   if (print_f) {
 
     for (; i < argc; i++) {
+      int rc;
+
       strcpy(path, argv[i]);
-      db = dbopen(path, O_RDONLY, 0, DB_BTREE, NULL);
-      if (!db) {
+      rc = _ndb_open(&db, path, 0);
+      if (rc < 0) {
 	sprintf(path, "%s.db", argv[i]);
-	db = dbopen(path, O_RDONLY, 0, DB_BTREE, NULL);
+	rc = _ndb_open(&db, path, 0);
       }
-      if (!db) {
+      if (rc < 0) {
 	sprintf(path, "%s.byname.db", argv[i]);
-	db = dbopen(path, O_RDONLY, 0, DB_BTREE, NULL);
+	rc = _ndb_open(&db, path, 0);
       }
-      if (!db) {
+      if (rc < 0) {
 	fprintf(stderr, "%s: %s: dbopen: %s\n",
 		argv[0], argv[i], strerror(errno));
 	exit(1);
       }
+
       p_name = strdup(path);
-      
+
+      _ndb_setent(&db, 1, path);
+
       do {
 	key.data = NULL;
 	key.size = 0;
 
 	val.data = NULL;
 	val.size = 0;
-	
-	rc = db->seq(db, &key, &val, R_NEXT);
+
+	rc = _ndb_get(&db, &key, &val, DB_NEXT);
 	if (rc == 0) {
 	  if (key_f)
 	    printf("%-14.*s\t", (int) key.size, key.data);
 	  printf("%.*s\n", (int) val.size, val.data);
 	}
       } while (rc == 0);
-      
-      db->close(db);
+
+      _ndb_close(&db);
     }
     return 0;
   }
-  
+
   if (type == NULL) {
 
     sprintf(path, "%s", argv[i]);
-    db_name = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
-    if (!db_name) {
+    rc = _ndb_open(&db_name, path, 1);
+    if (rc < 0) {
       sprintf(path, "%s.db", argv[i]);
-      db_name = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
+      rc = _ndb_open(&db_name, path, 1);
     }
-    if (!db_name) {
+    if (rc < 0) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
@@ -322,24 +333,24 @@ main(int argc,
   } else if (strcmp(type, "passwd") == 0) {
     
     sprintf(path, "%s/passwd.byuid.db", argv[i]);
-    db_id = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
-    if (!db_id) {
+    rc = _ndb_open(&db_id, path, 1);
+    if (rc < 0) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
     p_id = strdup(path);
     
     sprintf(path, "%s/passwd.byname.db", argv[i]);
-    db_name = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
-    if (!db_id) {
+    rc = _ndb_open(&db_name, path, 1);
+    if (rc < 0) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
     p_name = strdup(path);
     
     sprintf(path, "%s/group.byuser.db", argv[i]);
-    db_user = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
-    if (!db_id) {
+    rc = _ndb_open(&db_user, path, 1);
+    if (rc < 0) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
@@ -348,24 +359,24 @@ main(int argc,
   } else if (strcmp(type, "group") == 0) {
     
     sprintf(path, "%s/group.bygid.db", argv[i]);
-    db_id = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
-    if (!db_id) {
+    rc = _ndb_open(&db_id, path, 1);
+    if (rc < 0) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
     p_id = strdup(path);
     
     sprintf(path, "%s/group.byname.db", argv[i]);
-    db_name = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
-    if (!db_id) {
+    rc = _ndb_open(&db_name, path, 1);
+    if (rc < 0) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
     p_name = strdup(path);
     
     sprintf(path, "%s/group.byuser.db", argv[i]);
-    db_user = dbopen(path, O_RDWR|O_CREAT, 0644, DB_BTREE, NULL);
-    if (!db_id) {
+    rc = _ndb_open(&db_user, path, 1);
+    if (rc < 0) {
       fprintf(stderr, "%s: %s: dbopen: %s\n", argv[0], path, strerror(errno));
       exit(1);
     }
@@ -437,7 +448,7 @@ main(int argc,
     ptr = buf;
     name = strsep(&ptr, delim);
 
-    if (db_id) {
+    if (db_id.db) {
       (void) strsep(&ptr, delim); /* ignore pass */
       id = strsep(&ptr, delim);
 
@@ -445,7 +456,7 @@ main(int argc,
 	key.data = id;
 	key.size = strlen(id);
 	
-	rc = db_id->put(db_id, &key, &val, unique_f ? R_NOOVERWRITE : 0);
+	rc = _ndb_put(&db_id, &key, &val, unique_f ? DB_NOOVERWRITE : 0);
 	if (rc < 0) {
 	  fprintf(stderr, "%s: %s: %s: db->put: %s\n", argv[0], p_id, id, strerror(errno));
 	  exit(1);
@@ -459,7 +470,7 @@ main(int argc,
     key.data = name;
     key.size = strlen(name);
 
-    rc = db_name->put(db_name, &key, &val, unique_f ? R_NOOVERWRITE : 0);
+    rc = _ndb_put(&db_name, &key, &val, unique_f ? DB_NOOVERWRITE : 0);
     if (rc < 0) {
       fprintf(stderr, "%s: %s: %s: db->put: %s\n", argv[0], p_name, name, strerror(errno));
       exit(1);
@@ -468,26 +479,23 @@ main(int argc,
       nw++;
     }
 
-    if (db_user && id && type) {
-      if (strcmp(type, "group") == 0 && ptr && *ptr)
-	add_user_group(db_user, id, ptr);
-      else
-	add_user_group(db_user, id, name);
+    if (db_user.db && id && type) {
+      if (strcmp(type, "group") == 0 && ptr && *ptr) {
+	add_user_group(&db_user, id, ptr);
+      } else {
+	add_user_group(&db_user, id, name);
+      }
     }
     
     ++ni;
   }
 
-  db_name->close(db_name);
-  
-  if (db_id)
-    db_id->close(db_id);
-
-  if (db_user)
-    db_user->close(db_user);
+  _ndb_close(&db_name);
+  _ndb_close(&db_id);
+  _ndb_close(&db_user);
 
   if (verbose_f)
     fprintf(stderr, "%u entries imported (%u warning%s)\n", ni, nw, nw == 1 ? "" : "s");
-  
+
   return 0;
 }

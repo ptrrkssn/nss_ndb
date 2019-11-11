@@ -1,7 +1,4 @@
-#
-# Makefile - Build nss_ndb
-#
-# Copyright (c) 2017 Peter Eriksson <pen@lysator.liu.se>
+
 # All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -29,41 +26,54 @@ DEST=/usr
 
 PACKAGE=nss_ndb
 
-# DEBUG="-DDEBUG=2"
+DEBUG=""
+#DEBUG="-DDEBUG=2"
 
-VERSION=1.0.4
+VERSION=1.0.7
 INCARGS=
 LIBARGS=
 
-# VERSION=1.6
-# INCARGS=-I/usr/local/include/db6
-# LIBARGS=-L/usr/local/lib/db6 -ldb
+#VERSION=1.4
+#INCARGS=-I/usr/local/include/db48
+#LIBARGS=-L/usr/local/lib/db48 -ldb
+
+#VERSION=1.5
+#INCARGS=-I/usr/local/include/db5
+#LIBARGS=-L/usr/local/lib/db5 -ldb
+
+#VERSION=1.6
+#INCARGS=-I/usr/local/include/db6
+#LIBARGS=-L/usr/local/lib/db6 -ldb
 
 CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
-CFLAGS=-fPIC -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) $(DEBUG) 
+
+CFLAGS=-fPIC -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS)
+
 LDFLAGS=-g -G $(LIBARGS) 
 
 LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
 
-BIN=makendb
-BINOBJS=makendb.o
+BINS=makendb
+TESTS=ndb_test ndb_tlock
 
-all: $(LIB) $(BIN)
+all: $(LIB) $(BINS)
 
 $(LIB): $(LIBOBJS)
 	$(LD) $(LDFLAGS) -o $(LIB) $(LIBOBJS)
 
-$(BIN): $(BINOBJS)
-	$(CC) -g -o $(BIN) $(BINOBJS)
+makendb.o: makendb.c ndb.h
+
+makendb: makendb.o nss_ndb.o
+	$(CC) -g -o makendb makendb.o nss_ndb.o $(LIBARGS)
 
 clean:
 	-rm -f *~ \#* *.o *.core core
 
 distclean: clean
-	-rm -f *.so.* $(BIN)
+	-rm -f *.so.* $(BINS) $(TESTS)
 
-install: $(LIB) $(BIN)
+install: $(LIB) $(BINS)
 	$(INSTALL) -o root -g wheel -m 0444 $(LIB) $(DEST)/lib
 	$(INSTALL) -o root -g wheel -m 0444 $(BIN) $(DEST)/bin
 	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DEST)/share/man/man1
@@ -73,3 +83,11 @@ push:	distclean
 
 dist:	distclean
 	(cd ../dist && ln -sf ../$(PACKAGE) $(PACKAGE)-$(VERSION) && tar zcf $(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION)/* && rm $(PACKAGE)-$(VERSION))
+
+tests:	$(TESTS)
+
+ndb_test:	ndb_test.o $(LIBOBJS)
+	$(CC) -g -o ndb_test ndb_test.o $(LIBOBJS)
+
+ndb_tlock:	ndb_tlock.o $(LIBOBJS)
+	$(CC) -g -o ndb_tlock ndb_tlock.o $(LIBOBJS)
