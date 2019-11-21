@@ -14,6 +14,13 @@ Enable via the "ndb" keyword in /etc/nsswitch.conf
 
 Currently this project only supports FreeBSD (tested on 11 & 12).
 
+It is currently in production use at a site with about 120 000 users in
+the passwd database and 2000+ groups (some huge) and effectively handles that.
+
+% /usr/bin/time getent passwd | wc -l
+        0.63 real         0.36 user         0.26 sys
+  129272
+
 
 DOWNLOADS
 
