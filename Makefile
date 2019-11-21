@@ -1,4 +1,3 @@
-
 # All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -21,6 +20,13 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+PORTNAME=nss_ndb
+DISTVERSION=1.0.9
+CATEGORIES=lib
+MASTER_SITES=https://github.com/ptrrkssn/nss_ndb
+MAINTAINER=pen@lysator.liu.se
+COMMENT=DB-based nsswitch module
 
 DEST=/usr
 
@@ -76,7 +82,7 @@ distclean: clean
 
 install: $(LIB) $(BINS)
 	$(INSTALL) -o root -g wheel -m 0444 $(LIB) $(DEST)/lib
-	$(INSTALL) -o root -g wheel -m 0444 $(BIN) $(DEST)/bin
+	$(INSTALL) -o root -g wheel -m 0444 $(BINS) $(DEST)/bin
 	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DEST)/share/man/man1
 
 push:	distclean
