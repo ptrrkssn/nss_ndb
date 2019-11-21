@@ -326,7 +326,6 @@ str2group(char *str,
   
   free(btmp);
   gp->gr_mem[i] = NULL;
-  
   return 0;
 
  Fail:
@@ -428,6 +427,9 @@ _ndb_open(NDB *ndb,
 #endif
   
   if (!ndb->db || ndb->pid != pid) {
+    if (ndb->path) {
+      free(ndb->path);
+    }
     memset(ndb, 0, sizeof(*ndb));
     ndb->pid = pid;
     
@@ -483,12 +485,13 @@ _ndb_open(NDB *ndb,
     }
 #endif
 
+  ndb->path = strdup(path);
+  
 #if DEBUG
     fprintf(stderr, "opened -> ");
 #endif
   }
   
-  ndb->path = strdup(path);
 #if DEBUG
   fprintf(stderr, "%p\n", ndb);
 #endif

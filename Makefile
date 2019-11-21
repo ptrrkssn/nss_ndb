@@ -55,7 +55,7 @@ LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
 
 BINS=makendb
-TESTS=t_getgrnam
+TESTS=t_getgrnam t_getgrent t_getpwnam t_getpwent
 
 all: $(LIB) $(BINS)
 
@@ -88,4 +88,13 @@ tests:	$(TESTS)
 
 t_getgrnam:	t_getgrnam.o 
 	$(CC) -g -o t_getgrnam t_getgrnam.o 
+
+t_getgrent:	t_getgrent.o 
+	$(CC) -g -o t_getgrent t_getgrent.o 
+
+t_getpwnam:	t_getpwnam.o 
+	$(CC) -g -o t_getpwnam t_getpwnam.o 
+
+t_getpwent:	t_getpwent.o 
+	$(CC) -g -o t_getpwent t_getpwent.o 
 
