@@ -21,13 +21,6 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-PORTNAME=nss_ndb
-DISTVERSION=1.0.9
-CATEGORIES=lib
-MASTER_SITES=https://github.com/ptrrkssn/nss_ndb
-MAINTAINER=pen@lysator.liu.se
-COMMENT=DB-based nsswitch module
-
 DEST=/usr
 
 PACKAGE=nss_ndb
@@ -35,7 +28,7 @@ PACKAGE=nss_ndb
 DEBUG=""
 #DEBUG="-DDEBUG=2"
 
-VERSION=1.0.9
+VERSION=1.0.10
 INCARGS=
 LIBARGS=
 
@@ -62,7 +55,7 @@ LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
 
 BINS=makendb
-TESTS=ndb_test ndb_tlock
+TESTS=t_getgrnam
 
 all: $(LIB) $(BINS)
 
@@ -93,8 +86,6 @@ dist:	distclean
 
 tests:	$(TESTS)
 
-ndb_test:	ndb_test.o $(LIBOBJS)
-	$(CC) -g -o ndb_test ndb_test.o $(LIBOBJS)
+t_getgrnam:	t_getgrnam.o 
+	$(CC) -g -o t_getgrnam t_getgrnam.o 
 
-ndb_tlock:	ndb_tlock.o $(LIBOBJS)
-	$(CC) -g -o ndb_tlock ndb_tlock.o $(LIBOBJS)

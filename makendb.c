@@ -80,7 +80,7 @@ strxdup(const char *str) {
 
 void
 version(FILE *fp) {
-  fprintf(fp, "[makendb, version %s - Copyright (c) 2017 Peter Eriksson <pen@lysator.liu.se>]\n", VERSION);
+  fprintf(fp, "[makendb, version %s - Copyright (c) 2017-2019 Peter Eriksson <pen@lysator.liu.se>]\n", VERSION);
 }
 
 

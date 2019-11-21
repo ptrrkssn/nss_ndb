@@ -231,7 +231,7 @@ str2passwd(char *str,
   if (!pp->pw_shell) {
     goto Fail;
   }
-  
+
   free(btmp);
   pp->pw_fields = fc;
   return 0;
@@ -324,8 +324,9 @@ str2group(char *str,
     i = 1;
   }
   
-  gp->gr_mem[i] = NULL;
   free(btmp);
+  gp->gr_mem[i] = NULL;
+  
   return 0;
 
  Fail:
@@ -506,6 +507,7 @@ _ndb_getkey_r(NDB *ndb,
 	     char *buf,
 	     size_t bsize,
 	     int *res) {
+  int ec = NS_SUCCESS;
   void **ptr = rv;
 
   DBT key, val;
@@ -524,22 +526,23 @@ _ndb_getkey_r(NDB *ndb,
   
   rc = _ndb_get(ndb, &key, &val, 0);
   *res = errno;
-  
+
+  if (rc < 0)
+    ec = NS_UNAVAIL;
+  else if (rc > 0)
+    ec = NS_NOTFOUND;
+  else {
+    if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETOBJ_SIZE) < 0) {
+      *res = errno;
+      ec = NS_NOTFOUND;
+    } else
+      *ptr = pbuf;
+  }
+
   if (!ndb->stayopen)
     _ndb_close(ndb);
   
-  if (rc < 0)
-    return NS_UNAVAIL;
-  else if (rc > 0)
-    return NS_NOTFOUND;
-
-  if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETOBJ_SIZE) < 0) {
-    *res = errno;
-    return NS_NOTFOUND;
-  }
-
-  *ptr = pbuf;
-  return NS_SUCCESS;
+  return ec;
 }
   
 
