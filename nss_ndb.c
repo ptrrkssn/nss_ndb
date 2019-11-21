@@ -325,6 +325,7 @@ str2group(char *str,
   }
   
   gp->gr_mem[i] = NULL;
+  free(btmp);
   return 0;
 
  Fail:
@@ -531,7 +532,7 @@ _ndb_getkey_r(NDB *ndb,
     return NS_UNAVAIL;
   else if (rc > 0)
     return NS_NOTFOUND;
-  
+
   if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETOBJ_SIZE) < 0) {
     *res = errno;
     return NS_NOTFOUND;
