@@ -74,8 +74,8 @@ distclean: clean
 	-rm -f *.so.* $(BINS) $(TESTS)
 
 install: $(LIB) $(BINS)
-	$(INSTALL) -o root -g wheel -m 0444 $(LIB) $(DEST)/lib
-	$(INSTALL) -o root -g wheel -m 0444 $(BINS) $(DEST)/bin
+	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DEST)/lib
+	$(INSTALL) -o root -g wheel -m 0755 $(BINS) $(DEST)/bin
 	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DEST)/share/man/man1
 
 push:	distclean
