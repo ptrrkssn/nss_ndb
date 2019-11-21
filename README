@@ -1,7 +1,7 @@
 Title:	 nss_ndb
-Version: 1.0.2
+Version: 1.0.9
 Author:  Peter Eriksson <pen@lysator.liu.se>
-Date:    2017-05-07
+Date:    2019-11-21
 
 
 DESCRIPTION
@@ -12,7 +12,7 @@ handled efficiently via BTree databases stored in /var/db/nss_ndb/.
 
 Enable via the "ndb" keyword in /etc/nsswitch.conf
 
-Currently this project only supports FreeBSD (tested on 11).
+Currently this project only supports FreeBSD (tested on 11 & 12).
 
 
 DOWNLOADS
