@@ -56,9 +56,9 @@ LIBOBJS=nss_ndb.o
 
 BINS=makendb
 
-TESTS=t_libc
+TESTS=nsstest
 TESTUSER=peter86
-TESTGROUP=student-liu.se
+TESTGROUP=isy-ifm
 
 all: $(LIB) $(BINS)
 
@@ -87,19 +87,32 @@ push:	distclean
 dist:	distclean
 	(cd ../dist && ln -sf ../$(PACKAGE) $(PACKAGE)-$(VERSION) && tar zcf $(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION)/* && rm $(PACKAGE)-$(VERSION))
 
-tests:	$(TESTS)
-	./t_libc getpwent
-	./t_libc getgrent
-	./t_libc getpwnam $(TESTUSER)
-	./t_libc getgrnam $(TESTGROUP)
-	./t_libc getgrouplist $(TESTUSER)
-	./t_libc -s getpwent
-	./t_libc -s getgrent
-	./t_libc -s getpwnam $(TESTUSER)
-	./t_libc -s getgrnam $(TESTGROUP)
-	./t_libc -s getgrouplist $(TESTUSER)
 
-t_libc:	t_libc.o
-	$(CC) -g -o t_libc t_libc.o
+nsstest:	nsstest.o
+	$(CC) -g -o nsstest nsstest.o
+
+tests:	t-normal t-stayopen t-valgrind
+
+t-normal: $(TESTS)
+	./nsstest getpwent
+	./nsstest getgrent
+	./nsstest getpwnam $(TESTUSER)
+	./nsstest getgrnam $(TESTGROUP)
+	./nsstest getgrouplist $(TESTUSER)
+
+t-stayopen: $(TESTS)
+	./nsstest -s getpwent
+	./nsstest -s getgrent
+	./nsstest -s getpwnam $(TESTUSER)
+	./nsstest -s getgrnam $(TESTGROUP)
+	./nsstest -s getgrouplist $(TESTUSER)
+
+t-valgrind: $(TESTS)
+	valgrind ./nsstest getpwent
+	valgrind ./nsstest getgrent
+	valgrind ./nsstest getpwnam $(TESTUSER)
+	valgrind ./nsstest getgrnam $(TESTGROUP)
+	valgrind ./nsstest getgrouplist $(TESTUSER)
+
 
 
