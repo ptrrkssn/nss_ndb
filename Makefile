@@ -28,7 +28,7 @@ PACKAGE=nss_ndb
 DEBUG=""
 #DEBUG="-DDEBUG=2"
 
-VERSION=1.0.10
+VERSION=1.0.13
 INCARGS=
 LIBARGS=
 
@@ -46,7 +46,7 @@ LIBARGS=
 
 CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
 
-CFLAGS=-fPIC -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS)
+CFLAGS=-fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS)
 
 #LDFLAGS=-g -G $(LIBARGS) 
 LDFLAGS=--shared $(LIBARGS) 
@@ -55,7 +55,7 @@ LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
 
 BINS=makendb
-TESTS=t_getgrnam t_getgrent t_getpwnam t_getpwent
+TESTS=t_getgrnam t_getgrent t_getpwnam t_getpwent t_getgrouplist
 
 all: $(LIB) $(BINS)
 
@@ -97,4 +97,7 @@ t_getpwnam:	t_getpwnam.o
 
 t_getpwent:	t_getpwent.o 
 	$(CC) -g -o t_getpwent t_getpwent.o 
+
+t_getgrouplist:	t_getgrouplist.o 
+	$(CC) -g -o t_getgrouplist t_getgrouplist.o
 

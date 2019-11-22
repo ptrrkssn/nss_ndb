@@ -870,18 +870,23 @@ nss_ndb_getgroupmembership(void *res,
   val.size = 0;
   
   rc = _ndb_get(&ndb_grp_byuser, &key, &val, 0);
+#if 0
   _ndb_close(&ndb_grp_byuser);
-
+#endif
   if (rc < 0) {
+    _ndb_close(&ndb_grp_byuser);
     return NS_UNAVAIL;
   }
   else if (rc > 0) {
+    _ndb_close(&ndb_grp_byuser);
     return NS_NOTFOUND;
   }
 
   /* Should not happen */
-  if (val.data == NULL)
+  if (val.data == NULL) {
+    _ndb_close(&ndb_grp_byuser);
     return NS_UNAVAIL;
+  }
 
   members = memchr(val.data, ':', val.size);
   if (members) {
@@ -894,6 +899,8 @@ nss_ndb_getgroupmembership(void *res,
 	gr_addgid(gid, groupv, maxgrp, groupc);
     }
   }
+  
+  _ndb_close(&ndb_grp_byuser);
   
   /* Let following nsswitch backend(s) add more groups(?) */
   return NS_NOTFOUND;
