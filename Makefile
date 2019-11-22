@@ -28,7 +28,7 @@ PACKAGE=nss_ndb
 DEBUG=""
 #DEBUG="-DDEBUG=2"
 
-VERSION=1.0.13
+VERSION=1.0.14
 INCARGS=
 LIBARGS=
 
@@ -55,7 +55,10 @@ LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
 
 BINS=makendb
-TESTS=t_getgrnam t_getgrent t_getpwnam t_getpwent t_getgrouplist
+
+TESTS=t_libc
+TESTUSER=peter86
+TESTGROUP=student-liu.se
 
 all: $(LIB) $(BINS)
 
@@ -74,7 +77,7 @@ distclean: clean
 	-rm -f *.so.* $(BINS) $(TESTS)
 
 install: $(LIB) $(BINS)
-	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DEST)/lib
+	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DEST)/lib && ln -sf $(LIB) $(DEST)/lib/nss_ndb.so.1
 	$(INSTALL) -o root -g wheel -m 0755 $(BINS) $(DEST)/bin
 	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DEST)/share/man/man1
 
@@ -85,19 +88,18 @@ dist:	distclean
 	(cd ../dist && ln -sf ../$(PACKAGE) $(PACKAGE)-$(VERSION) && tar zcf $(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION)/* && rm $(PACKAGE)-$(VERSION))
 
 tests:	$(TESTS)
+	./t_libc getpwent
+	./t_libc getgrent
+	./t_libc getpwnam $(TESTUSER)
+	./t_libc getgrnam $(TESTGROUP)
+	./t_libc getgrouplist $(TESTUSER)
+	./t_libc -s getpwent
+	./t_libc -s getgrent
+	./t_libc -s getpwnam $(TESTUSER)
+	./t_libc -s getgrnam $(TESTGROUP)
+	./t_libc -s getgrouplist $(TESTUSER)
 
-t_getgrnam:	t_getgrnam.o 
-	$(CC) -g -o t_getgrnam t_getgrnam.o 
+t_libc:	t_libc.o
+	$(CC) -g -o t_libc t_libc.o
 
-t_getgrent:	t_getgrent.o 
-	$(CC) -g -o t_getgrent t_getgrent.o 
-
-t_getpwnam:	t_getpwnam.o 
-	$(CC) -g -o t_getpwnam t_getpwnam.o 
-
-t_getpwent:	t_getpwent.o 
-	$(CC) -g -o t_getpwent t_getpwent.o 
-
-t_getgrouplist:	t_getgrouplist.o 
-	$(CC) -g -o t_getgrouplist t_getgrouplist.o
 
