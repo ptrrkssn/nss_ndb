@@ -46,7 +46,7 @@ LIBARGS=
 
 CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
 
-CFLAGS=-fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS)
+CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS)
 
 #LDFLAGS=-g -G $(LIBARGS) 
 LDFLAGS=--shared $(LIBARGS) 
@@ -58,7 +58,9 @@ BINS=makendb
 
 TESTS=nsstest
 TESTUSER=peter86
+TESTUID=1003258
 TESTGROUP=isy-ifm
+TESTGID=100001000
 
 all: $(LIB) $(BINS)
 
@@ -89,30 +91,32 @@ dist:	distclean
 
 
 nsstest:	nsstest.o
-	$(CC) -g -o nsstest nsstest.o
+	$(CC) -g -o nsstest nsstest.o -lpthread
 
-tests:	t-normal t-stayopen t-valgrind
 
-t-normal: $(TESTS)
-	./nsstest getpwent
-	./nsstest getgrent
-	./nsstest getpwnam $(TESTUSER)
-	./nsstest getgrnam $(TESTGROUP)
-	./nsstest getgrouplist $(TESTUSER)
+NSSTEST=./nsstest
+TESTOPTS=
 
-t-stayopen: $(TESTS)
-	./nsstest -s getpwent
-	./nsstest -s getgrent
-	./nsstest -s getpwnam $(TESTUSER)
-	./nsstest -s getgrnam $(TESTGROUP)
-	./nsstest -s getgrouplist $(TESTUSER)
+tests: $(TESTS)
+	$(NSSTEST) $(TESTOPTS) getpwnam $(TESTUSER)
+	$(NSSTEST) $(TESTOPTS) -x getpwnam no-such-user
+	$(NSSTEST) $(TESTOPTS) getpwuid $(TESTUID)
+	$(NSSTEST) $(TESTOPTS) -x getpwuid -4711
+	$(NSSTEST) $(TESTOPTS) getpwent
+	$(NSSTEST) $(TESTOPTS) getgrnam $(TESTGROUP)
+	$(NSSTEST) $(TESTOPTS) getgrgid $(TESTGID)
+	$(NSSTEST) $(TESTOPTS) getgrent
+	$(NSSTEST) $(TESTOPTS) getgrouplist $(TESTUSER)
 
-t-valgrind: $(TESTS)
-	valgrind ./nsstest getpwent
-	valgrind ./nsstest getgrent
-	valgrind ./nsstest getpwnam $(TESTUSER)
-	valgrind ./nsstest getgrnam $(TESTGROUP)
-	valgrind ./nsstest getgrouplist $(TESTUSER)
-
+valgrind: $(TESTS)
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getpwnam $(TESTUSER)
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) -x getpwnam no-such-user
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getpwuid $(TESTUID)
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) -x getpwuid -4711
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getpwent
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getgrnam $(TESTGROUP)
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getgrgid $(TESTGID)
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getgrent
+	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getgrouplist $(TESTUSER)
 
 

@@ -847,6 +847,7 @@ nss_ndb_getgroupmembership(void *res,
   DBT key, val;
   int rc;
   char *members, *cp;
+  int ng = 0;
   
 
   if (name == NULL)
@@ -858,8 +859,9 @@ nss_ndb_getgroupmembership(void *res,
   }
   
   /* Add primary gid to groupv[] */
-  gr_addgid(pgid, groupv, maxgrp, groupc);
-
+  (void) gr_addgid(pgid, groupv, maxgrp, groupc);
+  ++ng;
+  
   memset(&key, 0, sizeof(key));
   memset(&val, 0, sizeof(val));
   
@@ -870,9 +872,6 @@ nss_ndb_getgroupmembership(void *res,
   val.size = 0;
   
   rc = _ndb_get(&ndb_grp_byuser, &key, &val, 0);
-#if 0
-  _ndb_close(&ndb_grp_byuser);
-#endif
   if (rc < 0) {
     _ndb_close(&ndb_grp_byuser);
     return NS_UNAVAIL;
@@ -895,11 +894,14 @@ nss_ndb_getgroupmembership(void *res,
     while ((cp = strsep(&members, ",")) != NULL) {
       gid_t gid;
       
-      if (sscanf(cp, "%u", &gid) == 1)
-	gr_addgid(gid, groupv, maxgrp, groupc);
+      if (sscanf(cp, "%u", &gid) == 1){
+	(void) gr_addgid(gid, groupv, maxgrp, groupc);
+	++ng;
+      }
     }
   }
-  
+
+  *groupc = ng;
   _ndb_close(&ndb_grp_byuser);
   
   /* Let following nsswitch backend(s) add more groups(?) */
