@@ -56,7 +56,7 @@ LIBOBJS=nss_ndb.o
 
 BINS=makendb
 
-TESTS=nsstest
+NSSTEST=nsstest
 TESTUSER=peter86
 TESTUID=1003258
 TESTGROUP=isy-ifm
@@ -76,7 +76,7 @@ clean:
 	-rm -f *~ \#* *.o *.core core
 
 distclean: clean
-	-rm -f *.so.* $(BINS) $(TESTS)
+	-rm -f *.so.* $(BINS) $(NSSTEST)
 
 install: $(LIB) $(BINS)
 	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DEST)/lib && ln -sf $(LIB) $(DEST)/lib/nss_ndb.so.1
@@ -95,28 +95,70 @@ nsstest:	nsstest.o
 
 
 NSSTEST=./nsstest
+VALGRIND=valgrind --leak-check=full --error-exitcode=1
+TESTCMD=$(NSSTEST)
+
 TESTOPTS=
 
-tests: $(TESTS)
-	$(NSSTEST) $(TESTOPTS) getpwnam $(TESTUSER)
-	$(NSSTEST) $(TESTOPTS) -x getpwnam no-such-user
-	$(NSSTEST) $(TESTOPTS) getpwuid $(TESTUID)
-	$(NSSTEST) $(TESTOPTS) -x getpwuid -4711
-	$(NSSTEST) $(TESTOPTS) getpwent
-	$(NSSTEST) $(TESTOPTS) getgrnam $(TESTGROUP)
-	$(NSSTEST) $(TESTOPTS) getgrgid $(TESTGID)
-	$(NSSTEST) $(TESTOPTS) getgrent
-	$(NSSTEST) $(TESTOPTS) getgrouplist $(TESTUSER)
+tests: t-passwd t-group t-other
 
-valgrind: $(TESTS)
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getpwnam $(TESTUSER)
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) -x getpwnam no-such-user
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getpwuid $(TESTUID)
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) -x getpwuid -4711
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getpwent
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getgrnam $(TESTGROUP)
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getgrgid $(TESTGID)
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getgrent
-	valgrind --leak-check=full --error-exitcode=1 $(NSSTEST) $(TESTOPTS) getgrouplist $(TESTUSER)
+valgrind:
+	$(MAKE) TESTCMD="$(VALGRIND) $(NSSTEST)" tests
 
+t-passwd: $(NSSTEST)
+	$(TESTCMD) $(TESTOPTS) getpwnam $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -x getpwnam no-such-user
+	$(TESTCMD) $(TESTOPTS) -s getpwnam $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -s -x getpwnam no-such-user
+	$(TESTCMD) $(TESTOPTS) getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -x getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) -P10 getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -P10 -x getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) -P10 -s getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) getpwuid $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -x getpwuid -4711
+	$(TESTCMD) $(TESTOPTS) -s getpwuid $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -s -x getpwuid -4711
+	$(TESTCMD) $(TESTOPTS) getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -x getpwuid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -P10 -x getpwuid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 -s getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x getpwuid_r -4711
+	$(TESTCMD) $(TESTOPTS) getpwent
+	$(TESTCMD) $(TESTOPTS) -s getpwent
+	$(TESTCMD) $(TESTOPTS) getpwent_r
+	$(TESTCMD) $(TESTOPTS) -P10 getpwent_r
+	$(TESTCMD) $(TESTOPTS) -P10 -s getpwent_r
+
+t-group: $(NSSTEST)
+	$(TESTCMD) $(TESTOPTS) getgrnam $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -x getgrnam no-such-group
+	$(TESTCMD) $(TESTOPTS) -s getgrnam $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -s -x getgrnam no-such-group
+	$(TESTCMD) $(TESTOPTS) getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -x getgrnam_r no-such-group
+	$(TESTCMD) $(TESTOPTS) -P10 getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -P10 -x getgrnam_r no-such-group
+	$(TESTCMD) $(TESTOPTS) -P10 -s getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x getgrnam_r no-such-group
+	$(TESTCMD) $(TESTOPTS) getgrgid $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -x getgrgid -4711
+	$(TESTCMD) $(TESTOPTS) -s getgrgid $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -s -x getgrgid -4711
+	$(TESTCMD) $(TESTOPTS) getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -x getgrgid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -P10 -x getgrgid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 -s getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x getgrgid_r -4711
+	$(TESTCMD) $(TESTOPTS) getgrent
+	$(TESTCMD) $(TESTOPTS) -s getgrent
+	$(TESTCMD) $(TESTOPTS) getgrent_r
+	$(TESTCMD) $(TESTOPTS) -P10 getgrent_r
+	$(TESTCMD) $(TESTOPTS) -P10 -s getgrent_r
+
+t-other:
+	$(TESTCMD) $(TESTOPTS) getgrouplist $(TESTUSER)
 
