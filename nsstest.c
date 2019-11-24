@@ -28,6 +28,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
@@ -37,6 +38,11 @@
 #include <pthread.h>
 
 
+#ifdef WITH_NSS_NDB
+#include <nsswitch.h>
+#include "nss_ndb.h"
+#endif
+
 #define MAXGROUPS 1024
 
 
@@ -45,7 +51,8 @@ char *argv0 = "t_libc";
 int n_repeat = 0;
 int n_timeout = 2;
 int n_threads = 0;
-int n_bufsize = 1*1024*1024;
+
+unsigned int n_bufsize = 1*1024*1024;
 
 int f_verbose = 0;
 int f_stayopen = 0;
@@ -148,6 +155,38 @@ s_time(double dt) {
 }
 
 
+#ifdef WITH_NSS_NDB
+int
+t_dispatch(const char *name,
+	   void *rv,
+	   ...) {
+  nss_module_unregister_fn fptr = NULL;
+  unsigned int mc = 0;
+  ns_mtab *mv = nss_module_register(NULL, &mc, &fptr);
+  int i, rc = -1;
+  va_list ap;
+  void *mdata = NULL;
+
+
+  if (!mv)
+    return -1;
+  
+  va_start(ap, rv);
+  
+  for (i = 0; i < mc && strcmp(mv[i].name, name); i++)
+    ;
+  if (i >= mc) {
+    rc = -1;
+  } else {
+    rc = (*mv[i].method)(rv, mdata, ap);
+  }
+  
+  va_end(ap);
+  return rc;
+}
+#endif
+
+
 int
 t_getpwnam(int argc,
 	   char *argv[],
@@ -240,6 +279,83 @@ t_getpwnam_r(int argc,
 
   return rc;
 }
+
+
+#ifdef WITH_NSS_NDB
+
+const char *
+nsserror(int nc) {
+  switch (nc) {
+  case NS_SUCCESS:
+    return "Success";
+  case NS_UNAVAIL:
+    return "Unavail";
+  case NS_NOTFOUND:
+    return "Not Found";
+  case NS_TRYAGAIN:
+    return "Try Again";
+  case NS_RETURN:
+    return "Return";
+  case NS_TERMINATE:
+    return "Terminate";
+  default:
+    return "Unknown";
+  }
+}
+
+
+int
+t_ndb_getpwnam_r(int argc,
+		 char *argv[],
+		 void *xp,
+		 unsigned long *ncp) {
+  char *buf = (char *) xp;
+  int i, rc = -1;
+
+  
+  for (i = 1; i < argc; i++) {
+    struct passwd pbuf, *pp = NULL;
+    int nc, ec = 0, trc = -1;
+    
+
+    nc = t_dispatch("getpwnam_r", &pp, argv[i], &pbuf, buf, n_bufsize, &ec);
+    if (nc != NS_SUCCESS) {
+      fprintf(stderr, "%s: Internal Error: t_dispatch(getpwnam_r, \"%s\") returned: %s\n",
+	      argv0, argv[i], nsserror(nc));
+      exit(1);
+    }
+
+    if (!pp && ec) {
+      fprintf(stderr, "%s: Error: t_dispatch(getpwnam_r, \"%s\") failed: %s\n",
+	      argv0, argv[i], strerror(ec));
+      exit(1);
+    }
+    
+    ++*ncp;
+    
+    if (!pp) {
+      if (f_verbose)
+	fprintf(stderr, "%s: Error: t_display(getpwnam_r, \"%s\"): User not found\n",
+		argv0, argv[i]);
+      trc = 1;
+    } else {
+      if (f_verbose)
+	p_passwd(pp);
+      trc = 0;
+    }
+
+    if (rc >= 0 && rc != trc) {
+      fprintf(stderr, "%s: Error: getpwnam_r(\"%s\") not yielding similar result as previous\n",
+	      argv0, argv[i]);
+      exit(1);
+    }
+    
+    rc = trc;
+  }
+
+  return rc;
+}
+#endif
 
 
 int
@@ -766,6 +882,11 @@ static struct action {
 	       { "getgrent",     &t_getgrent },
 	       { "getgrent_r",   &t_getgrent_r },
 	       { "getgrouplist", &t_getgrouplist },
+
+#ifdef WITH_NSS_NDB
+	       { "ndb_getpwnam_r",   &t_ndb_getpwnam_r },
+#endif
+
 	       { NULL,           NULL },
 };
 
@@ -778,6 +899,7 @@ typedef struct test_args {
   unsigned long nc;
   double t_min;
   double t_max;
+  double t_sum;
   pthread_t tid;
 } TESTARGS;
 
@@ -787,8 +909,8 @@ void *
 run_test(void *xp) {
   TESTARGS *tap = (TESTARGS *) xp;
   char *buf = NULL;
-  int j;
   struct timespec t0, t1, t2;
+  int j;
   
   
   buf = malloc(n_bufsize);
@@ -798,11 +920,6 @@ run_test(void *xp) {
   }
 
   clock_gettime(CLOCK_REALTIME, &t1);
-
-  if (f_stayopen) {
-    setpassent(1);
-    setgroupent(1);
-  }
 
   t2 = t1;
   for (j = 1; (!n_repeat || j <= n_repeat) && (!n_timeout || d_time(&t1, &t2) < n_timeout); j++) {
@@ -823,7 +940,8 @@ run_test(void *xp) {
       tap->t_min = dt;
     if (!tap->t_max || dt > tap->t_max)
       tap->t_max = dt;
-    
+
+    tap->t_sum += dt;
     t2 = t0;
   }
 
@@ -831,11 +949,67 @@ run_test(void *xp) {
   return NULL;
 }
 
+void
+usage(void) {
+  int i;
+
+  
+  printf("Usage:\n\t%s [<options>] <action> [<arguments>]\n", argv0);
+  puts("\nOptions:");
+  printf("\t-h            Display usage information\n");
+  printf("\t-v            Be verbose\n");
+  printf("\t-x            Expect failure\n");
+  printf("\t-s            Keep database open\n");
+  printf("\t-B <bytes>    Buffer size [%d bytes]\n", n_bufsize);
+  printf("\t-T <seconds>  Timeout limit [%d s]\n", n_timeout);
+  printf("\t-N <times>    Repeat test [%d times]\n", n_repeat);
+  printf("\t-P <threads>  Run in parallel [%d threads]\n", n_threads);
+  puts("\nActions:");
+  for (i = 0; actions[i].name; i++)
+    printf("\t%s\n", actions[i].name);
+}
+
+
+int
+getsize(unsigned int *v,
+	const char *str) {
+  char c = 0;
+
+  
+  if (sscanf(str, "%u%c", v, &c) < 1)
+    return 0;
+  
+  switch (c) {
+  case 0:
+    break;
+    
+  case 'k':
+  case 'K':
+    *v *= 1024;
+    break;
+    
+  case 'm':
+  case 'M':
+    *v *= 1024*1024;
+    break;
+    
+  case 'g':
+  case 'G':
+    *v *= 1024*1024*1024;
+    break;
+    
+  default:
+    return -1;
+  }
+
+  return 1;
+}
+
 
 int
 main(int argc,
      char *argv[]) {
-  int  o, i, j;
+  int  i, j;
   char c;
   struct timespec t1, t2;
   double dt;
@@ -844,26 +1018,16 @@ main(int argc,
   unsigned long t_nc = 0;
   double t_min = 0;
   double t_max = 0;
+  double t_sum = 0;
+  double t_avg = 0;
   
 
   argv0 = argv[0];
 
-  while ((o = getopt(argc, argv, "hvxsB:N:T:P:")) != -1)
-    switch (o) {
+  while ((c = getopt(argc, argv, "hvxsB:N:T:P:")) != -1)
+    switch (c) {
     case 'h':
-      printf("Usage:\n\t%s [<options>] <action> [<arguments>]\n", argv0);
-      puts("\nOptions:");
-      printf("\t-h            Display usage information\n");
-      printf("\t-v            Be verbose\n");
-      printf("\t-x            Expect failure\n");
-      printf("\t-s            Keep database open\n");
-      printf("\t-B <bytes>    Buffer size [%d bytes]\n", n_bufsize);
-      printf("\t-T <seconds>  Timeout limit [%d s]\n", n_timeout);
-      printf("\t-N <times>    Repeat test [%d times]\n", n_repeat);
-      printf("\t-P <threads>  Run in parallel [%d threads]\n", n_threads);
-      puts("\nActions:");
-      for (i = 0; actions[i].name; i++)
-	printf("\t%s\n", actions[i].name);
+      usage();
       exit(0);
 
     case 's':
@@ -879,32 +1043,7 @@ main(int argc,
       break;
 
     case 'B':
-      c = 0;
-      if (sscanf(optarg, "%u%c", &n_bufsize, &c) < 1) {
-	fprintf(stderr, "%s: Error: %s: Invalid buffer size\n", argv0, optarg);
-	exit(1);
-      }
-      
-      switch (c) {
-      case 0:
-	break;
-	
-      case 'k':
-      case 'K':
-	n_bufsize *= 1024;
-	break;
-	
-      case 'm':
-      case 'M':
-	n_bufsize *= 1024*1024;
-	break;
-	
-      case 'g':
-      case 'G':
-	n_bufsize *= 1024*1024*1024;
-	break;
-
-      default:
+      if (getsize(&n_bufsize, optarg) < 1) {
 	fprintf(stderr, "%s: Error: %s: Invalid buffer size\n", argv0, optarg);
 	exit(1);
       }
@@ -935,6 +1074,12 @@ main(int argc,
     exit(1);
   }
 
+  if (strcmp(argv[0], "help") == 0 ||
+      strcmp(argv[0], "?") == 0) {
+    usage();
+    exit(0);
+  }
+  
   tf = NULL;
   for (i = 0; actions[i].name && strcmp(actions[i].name, argv[0]) != 0; i++)
     ;
@@ -945,7 +1090,14 @@ main(int argc,
     exit(1);
   }
 
+  if (f_stayopen) {
+    setpassent(1);
+    setgroupent(1);
+  }
+
   t_nc = 0;
+  t_avg = 0.0;
+  t_sum = 0.0;
   t_min = 0.0;
   t_max = 0.0;
   
@@ -962,6 +1114,7 @@ main(int argc,
       tav[j].tf = tf;
       tav[j].argc = argc;
       tav[j].argv = argv;
+      tav[j].t_sum = 0.0;
       tav[j].t_min = 0.0;
       tav[j].t_max = 0.0;
       tav[j].nc = 0;
@@ -975,6 +1128,7 @@ main(int argc,
     for (j = 0; j < n_threads; j++) {
       void *res;
 
+      
       pthread_join(tav[j].tid, &res);
       
       t_nc += tav[j].nc;
@@ -982,15 +1136,23 @@ main(int argc,
 	t_min = tav[j].t_min;
       if (!t_max || tav[j].t_max > t_max)
 	t_max = tav[j].t_max;
+
+      t_sum += tav[j].t_sum;
+      t_avg += tav[j].t_sum/tav[j].nc;
     }
+
+    t_avg /= n_threads;
+    free(tav);
+    
   } else {
     TESTARGS ta;
 
     ta.tf = tf;
     ta.argc = argc;
     ta.argv = argv;
-    ta.t_min = 0;
-    ta.t_max = 0;
+    ta.t_sum = 0.0;
+    ta.t_min = 0.0;
+    ta.t_max = 0.0;
     ta.nc = 0;
     
     (void) run_test(&ta);
@@ -1000,15 +1162,20 @@ main(int argc,
       t_min = ta.t_min;
     if (!t_max || ta.t_max > t_max)
       t_max = ta.t_max;
+    t_avg = ta.t_sum/ta.nc;
   }
 
   clock_gettime(CLOCK_REALTIME, &t2);
   dt = d_time(&t1, &t2);
 
-  fprintf(stderr, "[%lu call%s to %s in %s", t_nc, (t_nc == 1 ? "" : "s"), argv[0], s_time(dt));
-  fprintf(stderr, " (%s/c)", s_time(dt/t_nc));
-  fprintf(stderr, ", min=%s/c", s_time(t_min));
-  fprintf(stderr, ", max=%s/c]\n", s_time(t_max));
+  fprintf(stderr, "Call results:\n");
+  fprintf(stderr, "  Calls:     %lu\n", t_nc);
+  fprintf(stderr, "  Time:      %s\n", s_time(dt));
+  fprintf(stderr, "  Time/call: %s\n", s_time(dt/t_nc));
+  fprintf(stderr, "Test results:\n");
+  fprintf(stderr, "  Min:       %s/c\n", s_time(t_min));
+  fprintf(stderr, "  Avg:       %s/c\n", s_time(t_avg));
+  fprintf(stderr, "  Max:       %s/c\n", s_time(t_max));
   
   return 0;
 }

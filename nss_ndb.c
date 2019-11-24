@@ -512,9 +512,9 @@ _ndb_getkey_r(NDB *ndb,
 	     int *res) {
   int ec = NS_SUCCESS;
   void **ptr = rv;
-
   DBT key, val;
   int rc;
+
   
   if (_ndb_open(ndb, path, 0) < 0)
     return NS_UNAVAIL;
@@ -535,6 +535,7 @@ _ndb_getkey_r(NDB *ndb,
   else if (rc > 0)
     ec = NS_NOTFOUND;
   else {
+    errno = 0;
     if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETOBJ_SIZE) < 0) {
       *res = errno;
       ec = NS_NOTFOUND;
@@ -645,6 +646,7 @@ nss_ndb_getpwnam_r(void *rv,
   size_t bsize         = va_arg(ap, size_t);         
   int *res             = va_arg(ap, int *);
 
+  
   return _ndb_getkey_r(&ndb_pwd_byname,
 		      path_passwd_byname,
 		      (STR2OBJ) str2passwd,
@@ -926,10 +928,10 @@ nss_module_register(const char *modname,
     { "group", "getgrent_r",           &nss_ndb_getgrent_r, 0 },
     { "group", "setgrent",             &nss_ndb_setgrent, 0 },
     { "group", "endgrent",             &nss_ndb_endgrent, 0 },
-    { "group", "getgroupmembership",   &nss_ndb_getgroupmembership, 0 },
+    { "group", "getgroupmembership",   &nss_ndb_getgroupmembership, 0 }, /* aka getgrouplist */
   };
   
-  *plen = 5+6;
+  *plen = sizeof(mtab)/sizeof(mtab[0]);
   *fptr = NULL;  /* no cleanup needed */
   
   return mtab;
@@ -944,7 +946,7 @@ nss_module_register(const char *modname,
  *   group     getgrent(3), getgrent_r(3), getgrgid_r(3), getgrnam_r(3),
  *             setgrent(3), endgrent(3)
  *
- *   group     getgroupmembership(3)
+ *   group     getgrouplist(3)
  *
  * NOT IMPLEMENTED YET:
  *   hosts     getaddrinfo(3), gethostbyaddr(3), gethostbyaddr_r(3),

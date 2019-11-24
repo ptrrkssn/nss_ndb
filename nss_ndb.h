@@ -126,5 +126,4 @@ nss_module_register(const char *modname,
 		    unsigned int *plen,
 		    nss_module_unregister_fn *fptr);
 
-
 #endif

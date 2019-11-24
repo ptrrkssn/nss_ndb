@@ -46,7 +46,7 @@ LIBARGS=
 
 CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
 
-CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS)
+CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) -DWITH_NSS_NDB=1
 
 #LDFLAGS=-g -G $(LIBARGS) 
 LDFLAGS=--shared $(LIBARGS) 
@@ -90,8 +90,8 @@ dist:	distclean
 	(cd ../dist && ln -sf ../$(PACKAGE) $(PACKAGE)-$(VERSION) && tar zcf $(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION)/* && rm $(PACKAGE)-$(VERSION))
 
 
-nsstest:	nsstest.o
-	$(CC) -g -o nsstest nsstest.o -lpthread
+nsstest:	nsstest.o nss_ndb.o
+	$(CC) -g -o nsstest nsstest.o nss_ndb.o -lpthread
 
 
 NSSTEST=./nsstest
