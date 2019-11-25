@@ -48,13 +48,10 @@ CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS)
 
 CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) -DWITH_NSS_NDB=1
 
-#LDFLAGS=-g -G $(LIBARGS) 
-LDFLAGS=--shared $(LIBARGS) 
+LDFLAGS=$(LIBARGS) 
 
 LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
-
-BINS=makendb
 
 NSSTEST=nsstest
 TESTUSER=peter86
@@ -62,10 +59,12 @@ TESTUID=1003258
 TESTGROUP=isy-ifm
 TESTGID=100001000
 
+BINS=makendb nsstest
+
 all: $(LIB) $(BINS)
 
 $(LIB): $(LIBOBJS)
-	$(LD) $(LDFLAGS) -o $(LIB) $(LIBOBJS)
+	$(LD) $(LDFLAGS) --shared -o $(LIB) $(LIBOBJS)
 
 makendb.o: makendb.c ndb.h
 
@@ -94,10 +93,9 @@ nsstest:	nsstest.o nss_ndb.o
 	$(CC) -g -o nsstest nsstest.o nss_ndb.o -lpthread
 
 
-NSSTEST=./nsstest
 VALGRIND=valgrind --leak-check=full --error-exitcode=1
-TESTCMD=$(NSSTEST)
 
+TESTCMD=./$(NSSTEST)
 TESTOPTS=
 
 tests: t-passwd t-group t-other
