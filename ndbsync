@@ -1,0 +1,1126 @@
+#!/usr/local/bin/perl
+#
+# Copyright (c) 2017-2019 Peter Eriksson <pen@lysator.liu.se>
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
+# 
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+#
+# This script can be used to keep a local NDB database in sync with an SQL database
+# (for example one populated from an AD or LDAP server)
+#
+#
+# MySQL tables/columns used:
+#
+# CREATE TABLE `users` (
+#   `name` varchar(64) NOT NULL,
+#   `uid` int(11) NOT NULL,
+#   `gid` int(11) NOT NULL,
+#   `gecos` varchar(128) DEFAULT NULL,
+#   `home` varchar(256) DEFAULT NULL,
+#   `shell` varchar(128) DEFAULT NULL,
+#   `expires` datetime DEFAULT NULL,
+#   PRIMARY KEY (`name`),
+#   UNIQUE KEY `uid` (`uid`)
+# ) DEFAULT CHARSET=utf8;
+#
+# CREATE TABLE `groups` (
+#   `name` varchar(64) NOT NULL,
+#   `gid` int(11) NOT NULL,
+#   `comment` varchar(128) DEFAULT NULL,
+#   PRIMARY KEY (`name`),
+#   UNIQUE KEY `gid` (`gid`)
+# ) DEFAULT CHARSET=utf8;
+#
+# CREATE TABLE `memberships` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `uid` int(11) NOT NULL,
+#   `gid` int(11) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `uid_gid` (`uid`,`gid`),
+#   KEY `uid` (`uid`),
+#   KEY `gid` (`gid`)
+# );
+#
+
+use warnings;
+use strict;
+
+use utf8;
+binmode STDIN,  ':utf8';
+binmode STDOUT, ':utf8';
+binmode STDERR, ':utf8';
+
+use Data::Dumper;
+use Getopt::Std;
+use Config::Tiny;
+use match::simple qw(match);
+use Proc::PID::File;
+use DB_File::Lock;
+use Fcntl qw(:flock O_RDWR O_CREAT);
+use DBI;
+
+
+my $max_ent = 0;
+
+my $cfgfile = '/etc/ndbsync.ini';
+
+my $f_update = 1;
+my $f_verbose = 0;
+my $f_version = 0;
+my $f_summary = 0;
+my $f_warning = 0;
+my $f_force = 0;
+my $f_debug = 0;
+my $f_expunge = 0;
+my $f_auto = 0;
+my $f_ignore = 0;
+my $f_primary = 0;
+my $f_members = 0;
+
+my $n_errors = 0;
+
+my $max_loops = 1000000;
+
+my $path_ndbdir = "/var/tmp/";
+
+my $db_uri = 'mysql://user@some.host/database';
+my $db_pass = 'secret';
+
+
+# passwd
+my $name_passwd_uid  = "passwd.byuid.db" ;
+my $name_passwd_name = "passwd.byname.db" ;
+
+# group
+my $name_group_gid  = "group.bygid.db" ;
+my $name_group_name = "group.byname.db" ;
+
+# netid
+my $name_group_user = "group.byuser.db";
+
+
+# --- INTERNAL FUNCTIONS --------------------------------------------------
+
+sub ps {
+    my ($s, $undef) = @_;
+
+    $undef = "-undef-" unless defined $undef;
+
+    return $undef unless defined $s;
+    return $s;
+}
+
+sub str2bool {
+    my ($str) = @_;
+
+    return 0 unless defined $str;
+    return 0 if $str eq '';
+
+    $str = lc $str;
+
+    return 0 if $str eq 'off';
+    return 0 if $str eq 'false';
+    return 0 if $str =~ /^n/;
+    return 0 if $str =~ /disable.*/;
+
+    return 1 if $str eq 'on';
+    return 1 if $str eq 'true';
+    return 1 if $str =~ /^y/;
+    return 1 if $str =~ /^enable.*/;
+
+    return 0+$str if $str =~ /\d+/;
+    return $str;
+}
+
+sub _scmp {
+    my ($a, $b) = @_;
+
+    return -1 if !defined $a &&  defined $b;
+    return 1 if  defined $a && !defined $b;
+    return 0 if !defined $a && !defined $b;
+    return $a cmp $b;
+}
+
+sub scmp {
+    my ($a, $b) = @_;
+    my $r = _scmp($a, $b);
+    return $r;
+}
+
+sub match {
+    my $a = shift;
+
+    foreach my $b (@_) {
+        next if  defined $a && !defined $b;
+        next if !defined $a &&  defined $b;
+        return 1 if !defined $a && !defined $b;
+        return 1 if $a cmp $b;
+    }
+
+    return 0;
+}
+
+sub _fetchrows_ah {
+    my ( $rs ) = @_;
+    my @res;
+
+    while (my $row = $rs->fetchrow_hashref()) {
+	push @res, $row;
+    }
+
+    return @res;
+}
+
+
+sub _fetchrows_aa {
+    my ( $rs ) = @_;
+    my @res;
+
+    while (my $row = $rs->fetchrow_arrayref()) {
+	push @res, $row;
+    }
+
+    return @res;
+}
+
+sub _print_args {
+    my @res;
+
+    foreach my $v (@_) {
+	if (!defined $v) {
+	    push @res, 'NULL';
+	} elsif ($v =~ /^[\d\.]+$/) {
+	    push @res, $v;
+	} else {
+	    push @res, "\"$v\"";
+	}
+    }
+
+    return join(', ', @res);
+}
+
+sub _sql {
+    my $db = shift;
+    my $statement = shift;
+    my $rc;
+
+    if ($statement =~ /^SELECT/i) {
+        my $rs = $db->prepare($statement);
+        $rc = $rs->execute(@_) if $rs;
+        return ($rc, $rs);
+    }
+}
+
+
+sub sql_disconnect {
+    my $db = shift;
+
+    $db->disconnect;
+}
+
+
+sub sql_qi {
+    my $db = shift;
+    my $v = shift;
+
+    return unless $db;
+    return unless $v;
+
+    return $db->quote_identifier($v);
+}
+
+sub sql_connect {
+    my $db_type;
+    my $db_user;
+    my $db_pass;
+    my $db_host;
+    my $db_name;
+
+    if (2 == @_) {
+        my $db_uri = shift;
+        $db_pass = shift;
+
+        # mysql://user@host/name
+        if ($db_uri =~ /^([a-z0-9]+):\/\/([a-z0-9_-]+)@([a-z0-9\._-]+)\/([a-z0-9]+)$/i) {
+            $db_type = $1;
+            $db_user = $2;
+            $db_host = $3;
+            $db_name = $4;
+        } else {
+            # Invalid URI
+            return;
+        }
+    } elsif (5 == @_) {
+        $db_type = shift;
+        $db_user = shift;
+        $db_pass = shift;
+        $db_host = shift;
+        $db_name = shift;
+    } else {
+        return;
+    }
+
+    my $attrs = { AutoCommit => 1, RaiseError => 0, PrintError => 0 };
+    $attrs->{mysql_enable_utf8} = 1 if $db_type && $db_type eq 'mysql';
+    
+    return DBI->connect("DBI:${db_type}:host=${db_host};database=${db_name}", $db_user, $db_pass, $attrs);
+}
+
+sub sql_error {
+    return $DBI::errstr;
+}
+
+sub sql {
+    my $db = shift;
+    my $statement = shift;
+
+    my ($rc, $rs) = _sql($db, $statement, @_);
+
+    return $rc if $statement =~ /^UPDATE/i || $statement =~ /^DELETE/i || $statement =~ /^INSERT/i;
+    return unless defined $rs;
+    return _fetchrows_ah($rs);
+}
+
+
+sub sql_1h {
+    my $db = shift;
+    my $statement = shift;
+
+    my ($rc, $rs) = _sql($db, $statement, @_);
+
+    return unless defined $rc;
+
+    # Get result row
+    my $row = $rs->fetchrow_hashref();
+
+    return unless $row;
+
+    # Make sure a single row is returned
+    return if $rs->fetchrow_hashref();
+
+    return $row;
+}
+
+
+sub sql_1v {
+    my $db = shift;
+    my $statement = shift;
+
+    my ($rc, $rs) = _sql($db, $statement, @_);
+
+    return unless defined $rc;
+
+    # Get result row
+    my $row = $rs->fetchrow_arrayref();
+
+    return unless $row;
+
+    # Make sure a single row is returned
+    return if $rs->fetchrow_arrayref();
+
+    # Make sure a single column is returned
+    return unless 1 == @$row;
+
+    return @{$row}[0];
+}
+
+
+
+sub sql_hash2q {
+    my $db = shift;
+    my $h = shift;
+
+    my $xs = '';
+    my $nc = 0;
+
+    for my $n (keys %$h) {
+	$xs .= " AND " if $nc > 0;
+	$xs .= $db->quote_identifier($n)."=".$db->quote($h->{$n});
+	$nc++;
+    }
+
+    return $xs;
+}
+
+
+sub sql_select {
+    my $db = shift;
+    my $table = $db->quote_identifier(shift); # XXX: FIXME: Funkar inte med Postgres...
+    my $extra = shift;
+
+    my $xs = '';
+    if ($extra) {
+	if (ref $extra eq 'HASH') {
+	    $xs = ' WHERE '.sql_hash2q($db, $extra);
+	} else {
+	    if ($extra =~ /^\s*(ORDER\s+BY|WHERE)\s+(.*)$/i) {
+		$xs = " $1 $2";
+	    } else {
+		$xs = " WHERE ${extra}";
+	    }
+	}
+    }
+
+    return sql($db, "SELECT * FROM ${table}${xs}", @_);
+}
+
+sub sql_select_1h {
+    my $db = shift;
+    my $table = $db->quote_identifier(shift);
+    my $extra = shift;
+
+    my $xs = '';
+    if ($extra) {
+	if (ref $extra eq 'HASH') {
+	    $xs = ' WHERE '.sql_hash2q($db, $extra);
+	} else {
+	    if ($extra =~ /^\s*(ORDER\s+BY|WHERE)\s+(.*)$/i) {
+		$xs = " $1 $2";
+	    } else {
+		$xs = " WHERE ${extra}";
+	    }
+	}
+    }
+
+    return sql_1h($db, "SELECT * FROM ${table}${xs}", @_);
+}
+
+sub sql_select_1v {
+    my $db = shift;
+    my $table = shift;
+    my $key = shift;
+
+    my $res = sql_select_1h($db, $table, @_);
+    return unless defined $res;
+    return $res->{$key};
+}
+
+sub sql_insert {
+    my $db = shift;
+    my $table = $db->quote_identifier(shift);
+    my $h = shift;
+
+    my @nlist;
+    my @qlist;
+    my @vlist;
+    foreach my $k (keys %$h) {
+        push @nlist, $db->quote_identifier($k);
+        push @qlist, '?';
+        push @vlist, $h->{$k};
+    }
+
+    return sql($db, "INSERT INTO ${table} (".join(',', @nlist).") VALUES (".join(',', @qlist).")", @vlist);
+}
+
+
+sub sql_update {
+    my $db = shift;
+    my $table = $db->quote_identifier(shift);
+    my $h = shift;
+    my $extra = shift;
+
+    my $xs = '';
+    if ($extra) {
+	if (ref $extra eq 'HASH') {
+	    $xs = ' WHERE '.sql_hash2q($db, $extra);
+	} else {
+	    if ($extra =~ /^\s*(WHERE)\s+(.*)$/i) {
+		$xs = " $1 $2";
+	    } else {
+		$xs = " WHERE ${extra}";
+	    }
+	}
+    }
+
+    # Failsafe - never update full table
+    return unless $xs;
+
+    my @nlist;
+    my @vlist;
+    foreach my $k (keys %$h) {
+        push @nlist, $db->quote_identifier($k).'=?';
+        push @vlist, $h->{$k};
+    }
+
+    return sql($db, "UPDATE ${table} SET ".join(',', @nlist).$xs, @vlist, @_);
+}
+
+sub sql_delete {
+    my $db = shift;
+    my $table = $db->quote_identifier(shift);
+    my $extra = shift;
+
+    my $xs = '';
+    if ($extra) {
+	if (ref $extra eq 'HASH') {
+	    $xs = ' WHERE '.sql_hash2q($db, $extra);
+	} else {
+	    if ($extra =~ /^\s*(WHERE)\s+(.*)$/i) {
+		$xs = " $1 $2";
+	    } else {
+		$xs = " WHERE ${extra}";
+	    }
+	}
+    }
+
+    # Failsafe - never delete full table
+    return unless $xs;
+
+    return sql($db, "DELETE FROM ${table}${xs}", @_);
+}
+
+
+sub parse_config {
+    my ($path) = @_;
+    
+    my $cfg = Config::Tiny->read($path, 'utf8');
+    
+    return unless defined $cfg;
+    
+    if (defined $cfg->{_}) {
+	my $section = $cfg->{_};
+        
+	$f_update   = str2bool($section->{update})  if defined $section->{update};
+	$f_verbose  = str2bool($section->{verbose}) if defined $section->{verbose};
+	$f_summary  = str2bool($section->{summary}) if defined $section->{summary};
+	$f_force    = str2bool($section->{force})   if defined $section->{force};
+	$f_debug    = str2bool($section->{debug})   if defined $section->{debug};
+	$f_expunge  = str2bool($section->{expunge}) if defined $section->{expunge};
+	$f_auto     = str2bool($section->{auto})    if defined $section->{auto};
+	$f_ignore   = str2bool($section->{ignore})  if defined $section->{ignore};
+	$f_members  = str2bool($section->{members}) if defined $section->{members};
+
+        $max_loops  = $section->{max_loops}         if defined $section->{max_loops};
+    }
+
+    if (defined $cfg->{master}) {
+	my $section = $cfg->{master};
+        
+        $db_uri = $section->{uri}       if defined $section->{uri};
+        $db_pass = $section->{password} if defined $section->{password};
+    }
+
+    if (defined $cfg->{ndb}) {
+	my $section = $cfg->{ndb};
+
+        $path_ndbdir = $section->{directory} if defined $section->{directory};
+    }
+}
+
+my %options=();
+getopts("hnvsVfdwxapimF:N:D:P:M:", \%options);
+
+if (defined $options{h}) {
+    print "Usage:\n";
+    print "  $0 [<options>]\n";
+    print "\nOptions:\n";
+    print "  -h                 Display this information.\n";
+    print "  -n                 No-update mode\n";
+    print "  -v                 Be verbose\n";
+    print "  -V                 Be very verbose\n";
+    print "  -w                 Enable warnings\n";
+    print "  -s                 Display summary\n";
+    print "  -f                 Force data update\n";
+    print "  -d                 Enable debug mode\n";
+    print "  -x                 Expunge stale entries\n";
+    print "  -a                 Auto-create per-user groups\n";
+    print "  -p                 Include users primary group\n";
+    print "  -i                 Ignore errors\n";
+    print "  -m                 Update membership\n";
+    print "  -M <limit>         Loop limit [${max_loops}]\n";
+    print "  -F <file>          Config file [".ps($cfgfile)."]\n";
+    print "  -N <directory>     NDB database directory [".ps($path_ndbdir)."]\n";
+    print "  -D <uri>           SQL database URI [".ps($db_uri)."]\n";
+    print "  -P <password>      SQL database password [".($db_pass ? "-not displayed-" : "-not set-")."]\n";
+    print "\nSummary:\n";
+    print "   A tool to synchronize local NDB database with an SQL database.\n";
+    print "\nAuthor:\n";
+    print '   Peter Eriksson <pen@lysator.liu.se>, 2019-11-25'."\n";
+    exit 0;
+}
+
+$cfgfile = $options{F} if defined $options{F};
+
+parse_config($cfgfile);
+
+$f_update   = 0 if defined $options{n};
+$f_verbose  = 1 if defined $options{v};
+$f_verbose  = 2 if defined $options{V};
+$f_summary  = 1 if defined $options{s};
+$f_force    = 1 if defined $options{f};
+$f_debug    = 1 if defined $options{d};
+$f_expunge  = 1 if defined $options{x};
+$f_warning  = 1 if defined $options{w};
+$f_auto     = 1 if defined $options{a};
+$f_ignore   = 1 if defined $options{i};
+$f_primary  = 1 if defined $options{p};
+$f_members  = 1 if defined $options{m};
+
+$max_loops  = $options{M} if defined $options{M};
+
+$path_ndbdir = $options{N} if defined $options{N};
+
+$db_uri  = $options{D} if defined $options{D};
+$db_pass = $options{P} if defined $options{P};
+
+
+print "[ndbsync, version 1.6.3]\n" if $f_verbose;
+exit 0 if $f_version;
+
+# If already running, then exit
+if (Proc::PID::File->running()) {
+    exit 0 if $f_ignore;
+    print STDERR "$0: Error: Another copy is already running\n";
+    exit 1;
+}
+
+
+my $mdb = sql_connect($db_uri, $db_pass);
+if (!$mdb) {
+    my $err = sql_error();
+    print STDERR "$0: Error: $err: Opening ${db_uri}\n";
+    exit 1;
+}
+
+
+
+sub gid2uids {
+    my $gid = shift;
+    my @uids;
+
+    my @mv = sql($mdb, 'SELECT `uid` FROM `memberships` WHERE `gid`=?', $gid);
+    foreach my $m (@mv) {
+        push @uids, $m->{uid};
+    }
+
+    return @uids;
+}
+
+
+my @groups;
+my @users;
+
+my $group_by_gid;
+my $group_by_name;
+
+my $user_by_uid;
+my $user_by_name;
+
+my $gids_by_uid;
+
+my $last = 0;
+
+
+sub load_sql_groups {
+    my $n_loaded = 0;
+
+    print STDERR "Loading groups:\n" if $f_verbose;
+    
+    @groups = sql($mdb, 'SELECT * FROM `groups`');
+
+    my $n_groups = 0+@groups;
+    if (!$n_groups) {
+        print STDERR "$0: Error: Got no groups from database\n";
+        exit 1;
+    }
+    
+    foreach my $g (@groups) {
+        $group_by_gid->{$g->{gid}} = $g;
+        $group_by_name->{$g->{name}} = $g;
+
+	$n_loaded++;
+        if ($f_verbose) {
+            my $now = time;
+            if ($last != $now) {
+                $last = $now;
+                print STDERR "[${n_loaded}]\r";
+            }
+        }
+    }
+
+    print STDERR "[${n_loaded}]\n" if $f_verbose;
+    return $n_groups;
+}
+
+sub load_sql_users {
+    my $n_loaded = 0;
+    
+    print STDERR "Loading users:\n" if $f_verbose;
+    
+    @users = sql($mdb, 'SELECT *,UNIX_TIMESTAMP(`expires`) AS `unix_expires` FROM `users`');
+
+    my $n_users = 0+@users;
+    if (!$n_users) {
+        print STDERR "$0: Error: Got no users from database\n";
+        exit 1;
+    }
+
+    foreach my $u (@users) {
+        $user_by_uid->{$u->{uid}} = $u;
+        $user_by_name->{$u->{name}} = $u;
+
+	$n_loaded++;
+        if ($f_verbose) {
+            my $now = time;
+            if ($last != $now) {
+                $last = $now;
+                print STDERR "[${n_loaded}]\r";
+            }
+        }
+    }
+
+    print STDERR "[${n_loaded}]\n" if $f_verbose;
+    return $n_users;
+}
+
+
+sub autocreate_user_groups {
+    my $n_created = 0;
+    
+    print STDERR "Auto-creating user groups:\n" if $f_verbose;
+    
+    foreach my $u (@users) {
+        # Autocreate personal user group if it doesn't exist
+        if (!$group_by_gid->{$u->{gid}}) {
+            my $g;
+            
+            # Better be safe than sorry
+            if (my $og = $group_by_name->{$u->{name}}) {
+                print STDERR "$0: Error: $u->{name} [$u->{gid}]: Auto-created Group name conflicts with gid $og->{gid}\n";
+                $n_errors++;
+                exit 1 unless $f_ignore;
+            }
+            
+            $g->{name} = $u->{name};
+            $g->{gid} = $u->{gid};
+            $g->{comment} = $u->{gecos};
+            
+            push @groups, $g;
+            $group_by_gid->{$g->{gid}} = $g;
+            $group_by_name->{$g->{name}} = $g;
+            
+            print STDERR "$g->{name} [$g->{gid}]: Group auto-created\n" if $f_verbose;
+	    $n_created++;
+        }
+
+        if ($f_verbose) {
+            my $now = time;
+            if ($last != $now) {
+                $last = $now;
+                print STDERR "[${n_created}]\r";
+            }
+        }
+    }
+    print STDERR "[${n_created}]\n" if $f_verbose;
+}
+
+sub generate_memberships {
+    my $n_scanned = 0;
+
+    print STDERR "Getting group membership data\n" if $f_verbose;
+    
+    foreach my $g (@groups) {
+        my @uids = gid2uids($g->{gid});
+
+        foreach my $uid (@uids) {
+            my $u = $user_by_uid->{$uid};
+	    if (defined $u) {
+		push @{$g->{members}}, $u->{name} if $f_primary ||  $u->{gid} != $g->{gid};
+		push @{$u->{groups}}, $g->{gid} unless match($g->{gid}, @{$u->{groups}});
+	    } else {
+#		if ($f_debug) {
+#		    print STDERR "DEBUG: UID=$uid\nUser:".Dumper($u)."\nGroup:".Dumper($g)."\n";
+#		}
+	    }
+        }
+	
+	$n_scanned++;
+        if ($f_verbose) {
+            my $now = time;
+            if ($last != $now) {
+                $last = $now;
+                print STDERR "[${n_scanned}]\r";
+            }
+        }
+    }
+    print STDERR "[${n_scanned}]\n" if $f_verbose;
+}
+
+sub update_passwd {
+    my $n_scanned = 0;
+    my $n_added = 0;
+    my $n_updated = 0;
+    my $n_deleted = 0;
+
+    my %ndb_passwd_uid;
+    my %ndb_passwd_name;
+    
+
+    tie(%ndb_passwd_uid, "DB_File::Lock", $path_ndbdir."/".$name_passwd_uid, ($f_update ? O_RDWR|O_CREAT : O_RDONLY), 0644, $DB_BTREE, ($f_update ? 'write' : 'read'))
+        or die "$0: Error: ${path_ndbdir}/${name_passwd_uid}: Unable to open\n" ;
+    
+    tie(%ndb_passwd_name, "DB_File::Lock", $path_ndbdir."/".$name_passwd_name, ($f_update ? O_RDWR|O_CREAT : O_RDONLY), 0644, $DB_BTREE, ($f_update ? 'write' : 'read'))
+        or die "$0: Error: ${path_ndbdir}/${name_passwd_name}: Unable to open\n" ;
+    
+
+    print "Updating users:\n" if $f_verbose;
+    
+    foreach my $u (@users) {
+        if ($n_scanned > $max_loops) {
+            print STDERR "$0: Error: Too many passwd entries (${n_scanned}) - aborting\n";
+            exit 1;
+        }
+
+        my $f_updated = 0;
+        my $f_added = 0;
+        
+        # Format (UTF8):
+        #   annda757:*:1000000036:100000000::0:0:Ann-Sofi Danielsson:/home/annda757:/bin/sh^@
+
+        my $home = $u->{home};
+#        $home = "/home/$u->{type}/$u->{name}" if $u->{type};
+
+        
+            
+        my $defshell = ($u->{name} =~ /\$$/) ? '/bin/nologin' : '/bin/sh';
+
+        my $pwent = ps($u->{name}).":*:".ps($u->{uid}).":".ps($u->{gid})."::0:".ps($u->{unix_expires},"0").":".ps($u->{gecos}).":".ps($home).":".ps($u->{shell},$defshell)." ";
+        my $len = length($pwent);
+        $max_ent = $len if $len > $max_ent;
+        
+        utf8::encode($pwent);
+        
+        if (my $du = $ndb_passwd_uid{$u->{uid}}) {
+            if ($f_force || $du ne $pwent) {
+                if ($f_update) {
+                    $ndb_passwd_uid{$u->{uid}} = $pwent;
+                    print "$u->{uid}: User Updated\n" if $f_verbose > 1;
+                } else {
+                    print "$u->{uid}: User (NOT) Updated\n" if $f_verbose > 1;
+                }
+                $f_updated = 1;
+            }
+        } else {
+            if ($f_update) {
+                $ndb_passwd_uid{$u->{uid}} = $pwent;
+                print "$u->{uid}: User Added\n" if $f_verbose > 1;
+            } else {
+                print "$u->{uid}: User (NOT) Added\n" if $f_verbose > 1;
+            }
+            $f_added = 1;
+        }
+        
+        if (my $dn = $ndb_passwd_name{$u->{name}}) {
+            if ($f_force || $dn ne $pwent) {
+                if ($f_update) {
+                    $ndb_passwd_name{$u->{name}} = $pwent;
+                    print "$u->{name}: User Updated\n" if $f_verbose > 1;
+                } else {
+                    print "$u->{name}: User (NOT) Updated\n" if $f_verbose > 1;
+                }
+                $f_updated = 1;
+            }
+        } else {
+            if ($f_update) {
+                $ndb_passwd_name{$u->{name}} = $pwent if $f_update;
+                print "$u->{name}: Added\n" if $f_verbose > 1;
+            } else {
+                print "$u->{name}: (NOT) Added\n" if $f_verbose > 1;
+            }
+            $f_added = 1;
+        }
+
+        $n_scanned++;
+        $n_updated++ if $f_updated;
+        $n_added++ if $f_added;
+        
+        if ($f_verbose) {
+            my $now = time;
+            if ($last != $now) {
+                $last = $now;
+                print STDERR "[${n_scanned}]\r";
+            }
+        }
+    }
+    
+    if ($f_expunge) {
+        foreach my $uu (keys %ndb_passwd_uid) {
+            if (!$user_by_uid->{$uu}) {
+                if ($f_update) {
+                    delete $ndb_passwd_uid{$uu};
+                    print STDERR "$uu: User deleted\n" if $f_verbose > 1;
+                } else {
+                    print STDERR "$uu: User (NOT) deleted\n" if $f_verbose > 1;
+                }
+                $n_deleted++;
+            }
+        }
+    
+        foreach my $un (keys %ndb_passwd_name) {
+            if (!$user_by_name->{$un}) {
+                if ($f_update) {
+                    delete $ndb_passwd_name{$un};
+                    print STDERR "$un: User deleted\n" if $f_verbose > 1;
+                } else {
+                    print STDERR "$un: User (NOT) deleted\n" if $f_verbose > 1;
+                }
+#	    $n_deleted++;
+            }
+        }
+    }
+
+    untie %ndb_passwd_uid;
+    untie %ndb_passwd_name;
+
+    print "[${n_scanned}]\n" if $f_verbose;
+    return ($n_scanned, $n_added, $n_updated, $n_deleted);
+}
+
+
+
+sub update_group {
+    my $n_scanned = 0;
+    my $n_added = 0;
+    my $n_updated = 0;
+    my $n_deleted = 0;
+
+    my %ndb_group_gid;
+    my %ndb_group_name;
+    
+
+    tie(%ndb_group_gid, "DB_File::Lock", $path_ndbdir."/".$name_group_gid, ($f_update ? O_RDWR|O_CREAT : O_RDONLY), 0644, $DB_BTREE, ($f_update ? 'write' : 'read'))
+        or die "$0: Error: ${path_ndbdir}/${name_group_gid}: Unable to open\n" ;
+    
+    tie(%ndb_group_name, "DB_File::Lock", $path_ndbdir."/".$name_group_name, ($f_update ? O_RDWR|O_CREAT : O_RDONLY), 0644, $DB_BTREE, ($f_update ? 'write' : 'read'))
+        or die "$0: Error: ${path_ndbdir}/${name_group_name}: Unable to open\n" ;
+    
+    print "Updating groups:\n" if $f_verbose;
+    
+    foreach my $g (@groups) {
+        if ($n_scanned > $max_loops) {
+            print STDERR "$0: Error: Too many group entries (${n_scanned}) - aborting\n";
+            exit 1;
+        }
+
+        my $f_updated = 0;
+        my $f_added = 0;
+        
+        # Format (UTF8):
+        #   wheel:*:0:root,Lpeter86,Lmikha02,Ljeamo93,fsAdm,Ldavby02^@
+        
+        
+        my $ne = 0+($g->{members} ? @{$g->{members}} : 0);
+        my $grent = ps($g->{name}).":*:".ps($g->{gid}).":".($ne > 0 ? join(',', @{$g->{members}}) : "")." ";
+        my $len = length($grent);
+        $max_ent = $len if $len > $max_ent;
+
+        print STDERR "$0: Warning: $g->{name}: Oversize group ($len > 1024 bytes, $ne entries)\n" if $len > 1024 && $f_warning;
+	
+        utf8::encode($grent);
+        
+        if (my $dg = $ndb_group_gid{$g->{gid}}) {
+            if ($f_force || $dg ne $grent) {
+                if ($f_update) {
+                    $ndb_group_gid{$g->{gid}} = $grent;
+                    print STDERR "$g->{gid}: Group Updated\n" if $f_verbose > 1;
+                } else {
+                    print STDERR "$g->{gid}: Group (NOT) Updated\n" if $f_verbose > 1;
+                }
+                $f_updated = 1;
+            }
+        } else {
+            if ($f_update) {
+                $ndb_group_gid{$g->{gid}} = $grent;
+                print STDERR "$g->{gid}: Group Added\n" if $f_verbose > 1;
+            } else {
+                print STDERR "$g->{gid}: Group (NOT) Added\n" if $f_verbose > 1;
+            }
+            $f_added = 1;
+        }
+        
+        if (my $dn = $ndb_group_name{$g->{name}}) {
+            if ($f_force || $dn ne $grent) {
+                if ($f_update) {
+                    $ndb_group_name{$g->{name}} = $grent;
+                    print STDERR "$g->{name}: Group Updated\n" if $f_verbose > 1;
+                } else {
+                    print STDERR "$g->{name}: Group (NOT) Updated\n" if $f_verbose > 1;
+                }
+                $f_updated = 1;
+            }
+        } else {
+            if ($f_update) {
+                $ndb_group_name{$g->{name}} = $grent;
+                print "$g->{name}: Group Added\n" if $f_verbose > 1;
+            } else {
+                print "$g->{name}: Group (NOT) Added\n" if $f_verbose > 1;
+            }
+            $f_added = 1;
+        }
+        
+        $n_scanned++;
+        $n_updated++ if $f_updated;
+        $n_added++ if $f_added;
+        
+        if ($f_verbose) {
+            my $now = time;
+            if ($last != $now) {
+                $last = $now;
+                print STDERR "[${n_scanned}]\r";
+            }
+        }
+    }
+
+    if ($f_expunge) {
+        foreach my $gg (keys %ndb_group_gid) {
+            if (!$group_by_gid->{$gg}) {
+                if ($f_update) {
+                    delete $ndb_group_gid{$gg};
+                    print "$gg: Group deleted\n" if $f_verbose > 1;
+                } else {
+                    print "$gg: Group (NOT) deleted\n" if $f_verbose > 1;
+                }
+                $n_deleted++;
+            }
+        }
+	
+        foreach my $gn (keys %ndb_group_name) {
+            if (!$group_by_name->{$gn}) {
+                if ($f_update) {
+                    delete $ndb_group_name{$gn};
+                    print "$gn: Group (NOT) deleted\n" if $f_verbose > 1;
+                } else {
+                    print "$gn: Group (NOT) deleted\n" if $f_verbose > 1;
+		}
+	    }
+	}
+    }
+    untie %ndb_group_gid;
+    untie %ndb_group_name;
+    
+    print "[${n_scanned}]\n" if $f_verbose;
+    return ($n_scanned, $n_added, $n_updated, $n_deleted);
+}
+
+
+sub update_netid {
+    my $n_scanned = 0;
+    my $n_added = 0;
+    my $n_updated = 0;
+    my $n_deleted = 0;
+    
+    my %ndb_group_user;
+    
+#    my $locking;
+#    $locking->{mode} = ($f_update ? 'write' : 'read');
+#    $locking->{nonblocking} = 0;
+#    $locking->{lockfile_name} = $path_ndbdir."/passwd.lock";
+#    $locking->{lockfile_mode} = 0700;
+
+    tie(%ndb_group_user, "DB_File::Lock", $path_ndbdir."/".$name_group_user, ($f_update ? O_RDWR|O_CREAT : O_RDONLY), 0644, $DB_BTREE, ($f_update ? 'write' : 'read'))
+        or die "$0: Error: ${path_ndbdir}/${name_group_user}: Unable to open\n" ;
+    
+    print "Updating netid:\n" if $f_verbose;
+    
+    foreach my $u (@users) {
+        if ($n_scanned > $max_loops) {
+            print STDERR "$0: Error: Too many passwd entries (${n_scanned}) - aborting\n";
+            exit 1;
+        }
+
+        my $f_updated = 0;
+        my $f_added = 0;
+        
+        my $ng = 0+($u->{groups} ? @{$u->{groups}} : 0);
+
+        # Format (user:uid:gid,gid,gid...):
+        #  Key: peter86
+        #  Data: peter86:1003258,100,101,102^@
+        my $k = "$u->{name}";
+        my $n = "$u->{name}:".($ng > 0 ? join(',', @{$u->{groups}}) : "")." ";
+        $max_ent = length($n) if length($n) > $max_ent;
+
+        if (my $o = $ndb_group_user{$k}) {
+            if ($f_force || $o ne $n) {
+                if ($f_update) {
+                    $ndb_group_user{$k} = $n;
+                    print STDERR "$u->{name}: Netid Updated\n" if $f_verbose > 1;
+                } else {
+                    print STDERR "$u->{name}: Netid (NOT) Updated\n" if $f_verbose > 1;
+                }
+                $f_updated = 1;
+            }
+        } else {
+            if ($f_update) {
+                $ndb_group_user{$k} = $n;
+                print STDERR "$u->{name}: Netid Added\n" if $f_verbose > 1;
+            } else {
+                print STDERR "$u->{name}: Netid (NOT) Added\n" if $f_verbose > 1;
+            }
+            $f_added = 1;
+        }
+        $n_scanned++;
+        $n_updated++ if $f_updated;
+        $n_added++ if $f_added;
+        
+        if ($f_verbose) {
+            my $now = time;
+            if ($last != $now) {
+                $last = $now;
+                print STDERR "[${n_scanned}]\r";
+            }
+        }
+    }
+
+    if ($f_expunge) {
+        foreach my $name (keys %ndb_group_user) {
+            if (!$user_by_name->{$name}) {
+                if ($f_update) {
+                    delete $ndb_group_user{$name}};
+		print "${name}: Netid deleted\n" if $f_verbose > 1;
+	    } else {
+		print "${name}: Netid (NOT) deleted\n" if $f_verbose > 1;
+	    }
+	    $n_deleted++;
+	}
+    }
+    
+    untie %ndb_group_user;
+    print "[${n_scanned}]\n" if $f_verbose;
+    
+    return ($n_scanned, $n_added, $n_updated, $n_deleted);
+}
+
+load_sql_users();
+load_sql_groups();
+
+autocreate_user_groups() if $f_auto;
+generate_memberships() if $f_members;
+
+update_passwd();
+update_group();
+update_netid();
+
+print "[Max entry length: $max_ent characters]\n" if $f_summary;
+
+exit($n_errors > 0 ? 1 : 0);

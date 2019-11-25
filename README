@@ -56,3 +56,38 @@ All done. You can dump the contents of the databases with:
   
 Use "-h" for more command line switches/usage.
 
+
+NDB DATABASE FORMAT
+
+All tables use UTF8.
+
+passwd.byname (user:password:uid:gid:class:change:expire:gecos:home:shell\0):
+  Key:
+    annda757
+  Data:
+    annda757:*:1000000036:100000000::0:0:Ann-Sofi Danielsson:/home/annda757:/bin/sh^@
+
+passwd.byuid (user:password:uid:gid:class:change:expire:gecos:home:shell\0):
+  Key:
+    1000000036
+  Data:
+    annda757:*:1000000036:100000000::0:0:Ann-Sofi Danielsson:/home/annda757:/bin/sh^@
+
+group.byname (group:password:gid:user,user,user,...\0):
+  Key:
+    wheel
+  Data:
+    wheel:*:0:root,Lpeter86,Lmikha02,Ljeamo93,fsAdm,Ldavby02^@
+
+group.bygid (group:password:gid:user,user,user,...\0):
+  Key:
+    0
+  Data:
+    wheel:*:0:root,Lpeter86,Lmikha02,Ljeamo93,fsAdm,Ldavby02^@
+
+group.byuser (user:uid:gid,gid,gid,...\0):
+  Key (user):
+    peter86
+  Data:
+    peter86:1003258,100,101,102^@
+  
