@@ -159,6 +159,6 @@ t-group: $(NSSTEST)
 	$(TESTCMD) $(TESTOPTS) -P10 getgrent_r
 	$(TESTCMD) $(TESTOPTS) -P10 -s getgrent_r
 
-t-other:
+t-other: $(NSSTEST)
 	$(TESTCMD) $(TESTOPTS) getgrouplist $(TESTUSER)
 

@@ -31,7 +31,14 @@ The source code for this project can be downloaded from:
 
 BUILD
 
-Run "make". To install into /usr/lib & /usr/bin, use "make install".
+Just run "make". To install into /usr/lib & /usr/bin, use "make install".
+
+
+TESTING
+
+Run "make tests". This will compile the "nsstest" tool and then run a number
+of validation tests on the code. Run "make valgrind" to run the same tests under
+the valgrind memory leak/test tool.
 
 
 USAGE
@@ -54,7 +61,9 @@ All done. You can dump the contents of the databases with:
 
   makendb -p path-to-database
   
-Use "-h" for more command line switches/usage.
+You can also use the perl script "ndbsync" to sync the NDB databases with data
+from an SQL database (mysql) if you would have such a data source.
+
 
 
 NDB DATABASE FORMAT
@@ -90,4 +99,3 @@ group.byuser (user:uid:gid,gid,gid,...\0):
     peter86
   Data:
     peter86:1003258,100,101,102^@
-  
