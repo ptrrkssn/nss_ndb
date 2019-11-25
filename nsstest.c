@@ -319,14 +319,14 @@ t_ndb_getpwnam_r(int argc,
     
 
     nc = t_dispatch("getpwnam_r", &pp, argv[i], &pbuf, buf, n_bufsize, &ec);
-    if (nc != NS_SUCCESS) {
+    if (nc != NS_SUCCESS && nc != NS_NOTFOUND) {
       fprintf(stderr, "%s: Internal Error: t_dispatch(getpwnam_r, \"%s\") returned: %s\n",
 	      argv0, argv[i], nsserror(nc));
       exit(1);
     }
 
     if (!pp && ec) {
-      fprintf(stderr, "%s: Error: t_dispatch(getpwnam_r, \"%s\") failed: %s\n",
+      fprintf(stderr, "%s: Error: ndb_getpwnam_r(\"%s\") failed: %s\n",
 	      argv0, argv[i], strerror(ec));
       exit(1);
     }
@@ -335,7 +335,7 @@ t_ndb_getpwnam_r(int argc,
     
     if (!pp) {
       if (f_verbose)
-	fprintf(stderr, "%s: Error: t_display(getpwnam_r, \"%s\"): User not found\n",
+	fprintf(stderr, "%s: Error: ndb_getpwnam_r(\"%s\"): User not found\n",
 		argv0, argv[i]);
       trc = 1;
     } else {
@@ -345,7 +345,65 @@ t_ndb_getpwnam_r(int argc,
     }
 
     if (rc >= 0 && rc != trc) {
-      fprintf(stderr, "%s: Error: getpwnam_r(\"%s\") not yielding similar result as previous\n",
+      fprintf(stderr, "%s: Error: ndb_getpwnam_r(\"%s\") not yielding similar result as previous\n",
+	      argv0, argv[i]);
+      exit(1);
+    }
+    
+    rc = trc;
+  }
+
+  return rc;
+}
+
+int
+t_ndb_getpwuid_r(int argc,
+		 char *argv[],
+		 void *xp,
+		 unsigned long *ncp) {
+  char *buf = (char *) xp;
+  int i, rc = -1;
+
+  
+  for (i = 1; i < argc; i++) {
+    struct passwd pbuf, *pp = NULL;
+    int nc, ec = 0, trc = -1;
+    uid_t uid;
+    
+
+    if (sscanf(argv[i], "%d", &uid) != 1) {
+      fprintf(stderr, "%s: Error: %s: Invalid uid\n", argv0, argv[i]);
+      exit(1);
+    }
+    
+    nc = t_dispatch("getpwuid_r", &pp, uid, &pbuf, buf, n_bufsize, &ec);
+    if (nc != NS_SUCCESS && nc != NS_NOTFOUND) {
+      fprintf(stderr, "%s: Internal Error: t_dispatch(getpwuid_r, \"%s\") returned: %s\n",
+	      argv0, argv[i], nsserror(nc));
+      exit(1);
+    }
+
+    if (!pp && ec) {
+      fprintf(stderr, "%s: Error: ndb_getpwuid_r(\"%s\") failed: %s\n",
+	      argv0, argv[i], strerror(ec));
+      exit(1);
+    }
+    
+    ++*ncp;
+    
+    if (!pp) {
+      if (f_verbose)
+	fprintf(stderr, "%s: Error: ndb_getpwuid_r(\"%s\"): UID (User ID) not found\n",
+		argv0, argv[i]);
+      trc = 1;
+    } else {
+      if (f_verbose)
+	p_passwd(pp);
+      trc = 0;
+    }
+
+    if (rc >= 0 && rc != trc) {
+      fprintf(stderr, "%s: Error: ndb_getpwuid_r(\"%s\") not yielding similar result as previous\n",
 	      argv0, argv[i]);
       exit(1);
     }
@@ -885,6 +943,7 @@ static struct action {
 
 #ifdef WITH_NSS_NDB
 	       { "ndb_getpwnam_r",   &t_ndb_getpwnam_r },
+	       { "ndb_getpwuid_r",   &t_ndb_getpwuid_r },
 #endif
 
 	       { NULL,           NULL },

@@ -53,7 +53,6 @@ LDFLAGS=$(LIBARGS)
 LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
 
-NSSTEST=nsstest
 TESTUSER=peter86
 TESTUID=1003258
 TESTGROUP=isy-ifm
@@ -75,11 +74,12 @@ clean:
 	-rm -f *~ \#* *.o *.core core
 
 distclean: clean
-	-rm -f *.so.* $(BINS) $(NSSTEST)
+	-rm -f *.so.* $(BINS)
 
 install: $(LIB) $(BINS)
 	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DEST)/lib && ln -sf $(LIB) $(DEST)/lib/nss_ndb.so.1
 	$(INSTALL) -o root -g wheel -m 0755 $(BINS) $(DEST)/bin
+	$(INSTALL) -o root -g wheel -m 0755 ndbsync $(DEST)/sbin
 	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DEST)/share/man/man1
 
 push:	distclean
@@ -95,10 +95,10 @@ nsstest:	nsstest.o nss_ndb.o
 
 VALGRIND=valgrind --leak-check=full --error-exitcode=1
 
-TESTCMD=./$(NSSTEST)
+TESTCMD=./nsstest
 TESTOPTS=
 
-tests: t-passwd t-group t-other
+tests: t-passwd t-group t-other t-ndb_passwd
 
 valgrind:
 	$(MAKE) TESTCMD="$(VALGRIND) $(NSSTEST)" tests
@@ -129,6 +129,20 @@ t-passwd: $(NSSTEST)
 	$(TESTCMD) $(TESTOPTS) getpwent_r
 	$(TESTCMD) $(TESTOPTS) -P10 getpwent_r
 	$(TESTCMD) $(TESTOPTS) -P10 -s getpwent_r
+
+t-ndb_passwd:
+	$(TESTCMD) $(TESTOPTS) ndb_getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -x ndb_getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) -P10 ndb_getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -P10 -x ndb_getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) -P10 -s ndb_getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) ndb_getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -x ndb_getpwuid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 ndb_getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -P10 -x ndb_getpwuid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 -s ndb_getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getpwuid_r -4711
 
 t-group: $(NSSTEST)
 	$(TESTCMD) $(TESTOPTS) getgrnam $(TESTGROUP)
