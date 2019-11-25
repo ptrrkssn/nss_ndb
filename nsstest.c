@@ -1,5 +1,5 @@
 /*
- * t_libc.c - Test passwd & group libc functionality
+ * nsstest.c - Test nsswitch passwd & group functionality
  *
  * Copyright (c) 2019 Peter Eriksson <pen@lysator.liu.se>
  * All rights reserved.
