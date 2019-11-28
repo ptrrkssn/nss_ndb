@@ -528,17 +528,15 @@ _ndb_getkey_r(NDB *ndb,
   key.size = strlen(name);
   
   rc = _ndb_get(ndb, &key, &val, 0);
-  *res = errno;
-
-  if (rc < 0)
+  if (rc < 0) {
+    *res = errno;
     ec = NS_UNAVAIL;
-  else if (rc > 0)
+  } else if (rc > 0)
     ec = NS_NOTFOUND;
   else {
-    errno = 0;
     if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETOBJ_SIZE) < 0) {
       *res = errno;
-      ec = NS_NOTFOUND;
+      ec = NS_UNAVAIL;
     } else
       *ptr = pbuf;
   }
@@ -561,8 +559,7 @@ _ndb_getent_r(NDB *ndb,
 	     size_t bsize,
 	     int *res) {
   void **ptr = rv;
-  
-  int rc;
+  int rc, ec = NS_SUCCESS;
   DBT key, val;
   
 
@@ -587,29 +584,30 @@ _ndb_getent_r(NDB *ndb,
 #else
   rc = ndb->db->seq(ndb->db, &key, &val, ndb->prev_f ? R_PREV : R_NEXT);
 #endif
-  *res = errno;
 
   ndb->prev_f = 0;
   
   if (rc < 0) {
     _ndb_close(ndb);
-    return NS_UNAVAIL;
-  } else if (rc > 0) {
-    return NS_NOTFOUND;
-  }
-
-  if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETENT_SIZE) < 0) {
-   *res = errno;
-
-   /* If errno == ERANGE (data can't fit in buffer), retry same record next time */
-   if (errno == ERANGE)
-     ndb->prev_f = 1;
+    *res = errno;
+    ec = NS_UNAVAIL;
+  } else if (rc > 0)
+    ec = NS_NOTFOUND;
+  else {
+  
+    if ((*str2obj)(val.data, val.size, pbuf, &buf, &bsize, MAX_GETENT_SIZE) < 0) {
+      *res = errno;
    
-    return NS_NOTFOUND;
+      /* If errno == ERANGE (data can't fit in buffer), retry same record next time */
+      if (errno == ERANGE)
+	ndb->prev_f = 1;
+      
+      ec = NS_NOTFOUND;
+    } else
+      *ptr = pbuf;
   }
-
-  *ptr = pbuf;
-  return NS_SUCCESS;
+  
+  return ec;
 }
 
 
@@ -815,11 +813,6 @@ gr_addgid(gid_t gid,
 {
   int i;
 
-#if 0  
-  fprintf(stderr, "gr_addgid: gid=%d, groupc=%d\n", gid, *groupc);
-  for (i = 0; i < *groupc; i++)
-    fprintf(stderr, "\tgv[%d]=%d\n", i, groupv[i]);
-#endif
   
   /* Do not add if already added */
   for (i = 0; i < *groupc; i++) {

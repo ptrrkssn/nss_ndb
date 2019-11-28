@@ -420,7 +420,7 @@ t_ndb_getpwnam_r(int argc,
 	      argv0, argv[i], nsserror(nc));
       exit(1);
     }
-
+    
     if (!pp && ec) {
       fprintf(stderr, "%s: Error: ndb_getpwnam_r(\"%s\") failed: %s\n",
 	      argv0, argv[i], strerror(ec));
@@ -436,7 +436,7 @@ t_ndb_getpwnam_r(int argc,
       trc = 1;
     } else {
       if (f_verbose || f_check)
-	s_passwd(sbuf, sizeof(buf), pp);
+	s_passwd(sbuf, sizeof(sbuf), pp);
       
       if (f_check && 
 	  (!c_passwd(pp) ||
@@ -507,7 +507,7 @@ t_ndb_getpwuid_r(int argc,
       trc = 1;
     } else {
       if (f_verbose || f_check)
-	s_passwd(sbuf, sizeof(buf), pp);
+	s_passwd(sbuf, sizeof(sbuf), pp);
       
       if (f_check && 
 	  (!c_passwd(pp) ||
@@ -1321,7 +1321,7 @@ main(int argc,
 
   argv0 = argv[0];
 
-  while ((c = getopt(argc, argv, "hvxcC:B:N:T:P:")) != -1)
+  while ((c = getopt(argc, argv, "hvxscC:B:N:T:P:")) != -1)
     switch (c) {
     case 'h':
       usage();
