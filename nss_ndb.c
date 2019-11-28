@@ -813,22 +813,26 @@ gr_addgid(gid_t gid,
 	  int maxgrp,
 	  int *groupc)
 {
-  int i, rc;
+  int i;
 
+#if 0  
+  fprintf(stderr, "gr_addgid: gid=%d, groupc=%d\n", gid, *groupc);
+  for (i = 0; i < *groupc; i++)
+    fprintf(stderr, "\tgv[%d]=%d\n", i, groupv[i]);
+#endif
+  
   /* Do not add if already added */
   for (i = 0; i < *groupc; i++) {
     if (groupv[i] == gid)
       return 0;
   }
   
-  rc = 0;
-  if (*groupc < maxgrp) {
-    groupv[*groupc] = gid;
-    (*groupc)++;
-  } else
-    rc = -1;
-  
-  return (rc < 0 ? rc : 1);
+  if (*groupc >= maxgrp)
+    return -1;
+    
+  groupv[*groupc] = gid;
+  ++*groupc;
+  return 1;
 }
 
 
@@ -849,7 +853,6 @@ nss_ndb_getgroupmembership(void *res,
   DBT key, val;
   int rc;
   char *members, *cp;
-  int ng = 0;
   
 
   if (name == NULL)
@@ -861,8 +864,7 @@ nss_ndb_getgroupmembership(void *res,
   }
 
   /* Add primary gid to groupv[] */
-  if (gr_addgid(pgid, groupv, maxgrp, groupc) > 0)
-    ++ng;
+  (void) gr_addgid(pgid, groupv, maxgrp, groupc);
   
   memset(&key, 0, sizeof(key));
   memset(&val, 0, sizeof(val));
@@ -896,14 +898,12 @@ nss_ndb_getgroupmembership(void *res,
     while ((cp = strsep(&members, ",")) != NULL) {
       gid_t gid;
       
-      if (sscanf(cp, "%u", &gid) == 1){
-	if (gr_addgid(gid, groupv, maxgrp, groupc) > 0)
-	  ++ng;
+      if (sscanf(cp, "%u", &gid) == 1) {
+	(void) gr_addgid(gid, groupv, maxgrp, groupc);
       }
     }
   }
 
-  *groupc = ng-1;
   _ndb_close(&ndb_grp_byuser);
   
   /* Let following nsswitch backend(s) add more groups(?) */

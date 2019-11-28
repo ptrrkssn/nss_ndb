@@ -43,7 +43,11 @@
 #include "nss_ndb.h"
 #endif
 
-#define MAXGROUPS 1024
+#define MAXGROUPS   1024
+
+#define MAXPASSWD   1024
+#define MAXGROUP   65536
+#define MAXGRPLIST 65536
 
 
 char *argv0 = "t_libc";
@@ -57,54 +61,119 @@ unsigned int n_bufsize = 1*1024*1024;
 int f_verbose = 0;
 int f_stayopen = 0;
 int f_expfail = 0;
+int f_check = 0;
+char *checkdata = NULL;
 
 
 int
-p_passwd(struct passwd *pp) {
+s_passwd(char *buf,
+	 size_t bufsize,
+	 struct passwd *pp) {
   if (!pp) {
-    puts("NULL");
+    snprintf(buf, bufsize, "NULL");
     return -1;
   }
   
-  printf("%s:%s:%d:%d:%s:%s:%s\n",
-	 pp->pw_name ? pp->pw_name : "<null>",
-	 pp->pw_passwd ? pp->pw_passwd : "<null>",
-	 pp->pw_uid, pp->pw_gid,
-	 pp->pw_gecos ? pp->pw_gecos : "<null>",
-	 pp->pw_dir ?  pp->pw_dir : "<null>",
-	 pp->pw_shell ? pp->pw_shell : "<null>");
+  snprintf(buf, bufsize, "%s:%s:%d:%d:%s:%s:%s",
+	   pp->pw_name ? pp->pw_name : "<null>",
+	   pp->pw_passwd ? pp->pw_passwd : "<null>",
+	   pp->pw_uid, pp->pw_gid,
+	   pp->pw_gecos ? pp->pw_gecos : "<null>",
+	   pp->pw_dir ?  pp->pw_dir : "<null>",
+	   pp->pw_shell ? pp->pw_shell : "<null>");
   
   return pp->pw_name && pp->pw_passwd && pp->pw_gecos && pp->pw_dir && pp->pw_shell;
 }
 
+int
+c_passwd(struct passwd *pp) {
+  if (!pp->pw_name ||
+      !pp->pw_passwd ||
+      !pp->pw_gecos ||
+      !pp->pw_dir ||
+      !pp->pw_shell)
+    return 0;
+
+  return 1;
+}
 
 int
-p_group(struct group *gp) {
+s_group(char *buf,
+	size_t bufsize,
+	struct group *gp) {
   int i = 0;
-
+  unsigned int p = 0;
+  
   
   if (!gp) {
-    puts("NULL");
+    snprintf(buf, bufsize, "NULL");
     return -1;
   }
   
-  printf("%s:%s:%d:",
-	 gp->gr_name ? gp->gr_name : "<null>",
-	 gp->gr_passwd ? gp->gr_passwd : "<null>",
-	 gp->gr_gid);
+  snprintf(buf, bufsize, "%s:%s:%d:",
+	   gp->gr_name ? gp->gr_name : "<null>",
+	   gp->gr_passwd ? gp->gr_passwd : "<null>",
+	   gp->gr_gid);
+
+  p = strlen(buf);
   
   if(gp->gr_mem) {
     for (i=0; gp->gr_mem[i]; ++i) {
-      if (i > 0)
-	putchar(',');
-      printf("%s", gp->gr_mem[i]);
+      snprintf(buf+p, bufsize-p, "%s%s", i > 0 ? "," : "", gp->gr_mem[i]);
+      p += strlen(buf+p);
     }
   } else {
-    puts("NULL");
+    snprintf(buf+p, bufsize-p, "NULL");
   }
-  putchar('\n');
   
   return (gp->gr_name && gp->gr_passwd) ? i : 0;
+}
+
+int
+c_group(struct group *gp) {
+  if (!gp->gr_name ||
+      !gp->gr_passwd ||
+      !gp->gr_mem)
+    return 0;
+
+  return 1;
+}
+
+
+static int
+cmp_gid(const void *p1,
+	const void *p2) {
+  gid_t g1 = * (gid_t *)p1;
+  gid_t g2 = * (gid_t *)p2;
+
+  return g1-g2;
+}
+
+
+int
+s_grplist(char *buf,
+	  size_t bufsize,
+	  char *user,
+	  gid_t *gidv,
+	  int ngv) {
+  int k;
+  unsigned int p = 0;
+
+
+  if (!gidv)
+    return -1;
+  
+  snprintf(buf, bufsize, "%s:", user);
+  p = strlen(buf);
+
+  (void) qsort(gidv, ngv, sizeof(gidv[0]), &cmp_gid);
+  
+  for (k = 0; k < ngv; k++) {
+    snprintf(buf+p, bufsize-p, "%s%d", k ? "," : "", gidv[k]);
+    p += strlen(buf+p);
+  }
+
+  return k;
 }
 
 
@@ -193,7 +262,8 @@ t_getpwnam(int argc,
 	   void *xp,
 	   unsigned long *ncp) {
   int i, rc = -1;
-
+  char sbuf[MAXPASSWD];
+  
   
   for (i = 1; i < argc; i++) {
     struct passwd *pp = NULL;
@@ -216,8 +286,20 @@ t_getpwnam(int argc,
 		argv0, argv[i]);
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_passwd(sbuf, sizeof(sbuf), pp);
+      
+      if (f_check &&
+	  (!c_passwd(pp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_passwd(pp);
+	puts(sbuf);
+      
       trc = 0;
     }
 
@@ -241,7 +323,8 @@ t_getpwnam_r(int argc,
 	     unsigned long *ncp) {
   char *buf = (char *) xp;
   int i, rc = -1;
-
+  char sbuf[MAXPASSWD];
+  
   
   for (i = 1; i < argc; i++) {
     struct passwd pbuf, *pp = NULL;
@@ -263,8 +346,20 @@ t_getpwnam_r(int argc,
 		argv0, argv[i]);
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_passwd(sbuf, sizeof(sbuf), pp);
+
+      if (f_check && 
+	  (!c_passwd(pp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_passwd(pp);
+	puts(sbuf);
+
       trc = 0;
     }
 
@@ -311,7 +406,8 @@ t_ndb_getpwnam_r(int argc,
 		 unsigned long *ncp) {
   char *buf = (char *) xp;
   int i, rc = -1;
-
+  char sbuf[MAXPASSWD];
+  
   
   for (i = 1; i < argc; i++) {
     struct passwd pbuf, *pp = NULL;
@@ -339,8 +435,20 @@ t_ndb_getpwnam_r(int argc,
 		argv0, argv[i]);
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_passwd(sbuf, sizeof(buf), pp);
+      
+      if (f_check && 
+	  (!c_passwd(pp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_passwd(pp);
+	puts(sbuf);
+      
       trc = 0;
     }
 
@@ -363,7 +471,8 @@ t_ndb_getpwuid_r(int argc,
 		 unsigned long *ncp) {
   char *buf = (char *) xp;
   int i, rc = -1;
-
+  char sbuf[MAXPASSWD];
+  
   
   for (i = 1; i < argc; i++) {
     struct passwd pbuf, *pp = NULL;
@@ -397,8 +506,20 @@ t_ndb_getpwuid_r(int argc,
 		argv0, argv[i]);
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_passwd(sbuf, sizeof(buf), pp);
+      
+      if (f_check && 
+	  (!c_passwd(pp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_passwd(pp);
+	puts(sbuf);
+      
       trc = 0;
     }
 
@@ -422,7 +543,8 @@ t_getpwuid(int argc,
 	   void *xp,
 	   unsigned long *ncp) {
   int i, rc = -1;
-
+  char sbuf[MAXPASSWD];
+  
   
   for (i = 1; i < argc; i++) {
     struct passwd *pp = NULL;
@@ -452,8 +574,20 @@ t_getpwuid(int argc,
 		argv0, uid);
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_passwd(sbuf, sizeof(sbuf), pp);
+      
+      if (f_check && 
+	  (!c_passwd(pp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_passwd(pp);
+	puts(sbuf);
+      
       trc = 0;
     }
 
@@ -477,7 +611,8 @@ t_getpwuid_r(int argc,
 	     unsigned long *ncp) {
   char *buf = (char *) xp;
   int i, rc = -1;
-
+  char sbuf[MAXPASSWD];
+  
   
   for (i = 1; i < argc; i++) {
     struct passwd pbuf, *pp = NULL;
@@ -503,8 +638,20 @@ t_getpwuid_r(int argc,
 	fprintf(stderr, "%s: Error: getpwuid_r(%d) failed: %s\n", argv0, uid, "UID (User ID) not found");
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_passwd(sbuf, sizeof(sbuf), pp);
+      
+      if (f_check && 
+	  (!c_passwd(pp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_passwd(pp);
+	puts(sbuf);
+      
       trc = 0;
     }
     
@@ -528,6 +675,7 @@ t_getpwent(int argc,
 	   unsigned long *ncp) {
   struct passwd *pp = NULL;
   unsigned int m = 0;
+  char sbuf[MAXPASSWD];
   
   
   setpwent();
@@ -536,8 +684,18 @@ t_getpwent(int argc,
   while ((pp = getpwent()) != NULL) {
     ++*ncp;
     ++m;
+    
+    if (f_verbose || f_check)
+      s_passwd(sbuf, sizeof(sbuf), pp);
+    
+    if (f_check && !c_passwd(pp)) {
+      fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+	      argv0, sbuf);
+      exit(1);
+    }
+    
     if (f_verbose)
-      p_passwd(pp);
+      puts(sbuf);
   }
 
   if (errno) {
@@ -566,7 +724,8 @@ t_getpwent_r(int argc,
   struct passwd pbuf, *pp = NULL;
   int ec;
   unsigned int m = 0;
-
+  char sbuf[MAXPASSWD];
+  
   
   setpwent();
   
@@ -574,8 +733,17 @@ t_getpwent_r(int argc,
     ++*ncp;
     ++m;
     
+    if (f_verbose || f_check)
+      s_passwd(sbuf, sizeof(sbuf), pp);
+    
+    if (f_check && !c_passwd(pp)) {
+      fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+	      argv0, sbuf);
+      exit(1);
+    }
+    
     if (f_verbose)
-      p_passwd(pp);
+      puts(sbuf);
   }
   
   if (ec) {
@@ -602,7 +770,8 @@ t_getgrnam(int argc,
 	   void *xp,
 	   unsigned long *ncp) {
   int i, rc = -1;
-
+  char sbuf[MAXGROUP];
+  
   
   for (i = 1; i < argc; i++) {
     struct group *gp = NULL;
@@ -623,8 +792,20 @@ t_getgrnam(int argc,
 	fprintf(stderr, "%s: Error: getgrnam(\"%s\"): Group not found\n", argv0, argv[i]);
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_group(sbuf, sizeof(sbuf), gp);
+      
+      if (f_check && 
+	  (!c_group(gp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_group(gp);
+	puts(sbuf);
+      
       trc = 0;
     }
 
@@ -648,7 +829,8 @@ t_getgrnam_r(int argc,
 	     unsigned long *ncp) {
   char *buf = (char *) xp;
   int i, rc = -1;
-
+  char sbuf[MAXGROUP];
+  
   
   for (i = 1; i < argc; i++) {
     struct group gbuf, *gp = NULL;
@@ -667,8 +849,20 @@ t_getgrnam_r(int argc,
 	fprintf(stderr, "%s: Error: getgrnam_r(\"%s\"): Group not found\n", argv0, argv[i]);
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_group(sbuf, sizeof(sbuf), gp);
+      
+      if (f_check &&
+	  (!c_group(gp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_group(gp);
+	puts(sbuf);
+      
       trc = 0;
     }
 
@@ -691,7 +885,8 @@ t_getgrgid(int argc,
 	   void *xp,
 	   unsigned long *ncp) {
   int i, rc = -1;
-
+  char sbuf[MAXGROUP];
+  
   
   for (i = 1; i < argc; i++) {
     struct group *gp = NULL;
@@ -718,8 +913,20 @@ t_getgrgid(int argc,
 	fprintf(stderr, "%s: Error: getgrgid(%d): GID (Group ID) not found\n", argv0, gid);
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_group(sbuf, sizeof(sbuf), gp);
+      
+      if (f_check && 
+	  (!c_group(gp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_group(gp);
+	puts(sbuf);
+      
       trc = 0;
     }
 
@@ -743,7 +950,8 @@ t_getgrgid_r(int argc,
 	     unsigned long *ncp) {
   char *buf = (char *) xp;
   int i, rc = -1;
-
+  char sbuf[MAXGROUP];
+  
   
   for (i = 1; i < argc; i++) {
     struct group gbuf, *gp = NULL;
@@ -771,8 +979,20 @@ t_getgrgid_r(int argc,
 		argv0, gid, "GID (Group ID) not found");
       trc = 1;
     } else {
+      if (f_verbose || f_check)
+	s_group(sbuf, sizeof(sbuf), gp);
+      
+      if (f_check && 
+	  (!c_group(gp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
       if (f_verbose)
-	p_group(gp);
+	puts(sbuf);
+      
       trc = 0;
     }
     
@@ -796,6 +1016,7 @@ t_getgrent(int argc,
 	   unsigned long *ncp) {
   struct group *gp = NULL;
   unsigned int m = 0;
+  char sbuf[MAXGROUP];
   
   
   setgrent();
@@ -804,8 +1025,18 @@ t_getgrent(int argc,
   while ((gp = getgrent()) != NULL) {
     ++*ncp;
     ++m;
+    
+    if (f_verbose || f_check)
+      s_group(sbuf, sizeof(sbuf), gp);
+    
+    if (f_check && !c_group(gp)) {
+      fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+	      argv0, sbuf);
+      exit(1);
+    }
+    
     if (f_verbose)
-      p_group(gp);
+      puts(sbuf);
   }
 
   if (errno) {
@@ -834,6 +1065,7 @@ t_getgrent_r(int argc,
   struct group gbuf, *gp = NULL;
   int ec;
   unsigned int m = 0;
+  char sbuf[MAXGROUP];
   
   
   setgrent();
@@ -842,8 +1074,17 @@ t_getgrent_r(int argc,
     ++*ncp;
     ++m;
     
+    if (f_verbose || f_check)
+      s_group(sbuf, sizeof(sbuf), gp);
+
+    if (f_check && !c_group(gp)) {
+      fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+	      argv0, sbuf);
+      exit(1);
+    }
+    
     if (f_verbose)
-      p_group(gp);
+      puts(sbuf);
   }
   
   if (ec) {
@@ -869,9 +1110,10 @@ t_getgrouplist(int argc,
 	       char *argv[],
 	       void *xp,
 	       unsigned long *ncp) {
-  int i, k;
+  int i;
+  char sbuf[MAXGRPLIST];
 
-  
+
   for (i = 1; i < argc; i++) {
     struct passwd *pp = NULL;
 
@@ -898,24 +1140,18 @@ t_getgrouplist(int argc,
     
     ++*ncp;
     
-    if (f_verbose) {
-      int first = 1;
-
-      k = 0;
-      if (!pp && ngv > 0 && gidv[0] == -1)
-	++k;
-	
-      printf("%s:", argv[i]);
-      for (; k < ngv; k++) {
-	if (!first)
-	  putchar(',');
-
-	printf("%d", gidv[k]);
-	first = 0;
-      }
-      putchar('\n');
+    if (f_verbose || f_check)
+      s_grplist(sbuf, sizeof(sbuf), argv[i], &gidv[0], ngv);
+    
+    if (f_check && 
+	(checkdata && strcmp(sbuf, checkdata) != 0)) {
+      fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+	      argv0, sbuf);
+      exit(1);
     }
     
+    if (f_verbose)
+      puts(sbuf);
   }
   
   return 0;
@@ -1018,7 +1254,9 @@ usage(void) {
   printf("\t-h            Display usage information\n");
   printf("\t-v            Be verbose\n");
   printf("\t-x            Expect failure\n");
+  printf("\t-c            Validate returned data\n");
   printf("\t-s            Keep database open\n");
+  printf("\t-C <text>     Compare returned data\n");
   printf("\t-B <bytes>    Buffer size [%d bytes]\n", n_bufsize);
   printf("\t-T <seconds>  Timeout limit [%d s]\n", n_timeout);
   printf("\t-N <times>    Repeat test [%d times]\n", n_repeat);
@@ -1083,7 +1321,7 @@ main(int argc,
 
   argv0 = argv[0];
 
-  while ((c = getopt(argc, argv, "hvxsB:N:T:P:")) != -1)
+  while ((c = getopt(argc, argv, "hvxcC:B:N:T:P:")) != -1)
     switch (c) {
     case 'h':
       usage();
@@ -1101,6 +1339,16 @@ main(int argc,
       ++f_expfail;
       break;
 
+    case 'c':
+      ++f_check;
+      break;
+      
+    case 'C':
+      checkdata = strdup(optarg);
+      if (checkdata)
+	++f_check;
+      break;
+      
     case 'B':
       if (getsize(&n_bufsize, optarg) < 1) {
 	fprintf(stderr, "%s: Error: %s: Invalid buffer size\n", argv0, optarg);
