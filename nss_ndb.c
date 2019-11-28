@@ -818,7 +818,7 @@ gr_addgid(gid_t gid,
   /* Do not add if already added */
   for (i = 0; i < *groupc; i++) {
     if (groupv[i] == gid)
-      return *groupc;
+      return 0;
   }
   
   rc = 0;
@@ -828,7 +828,7 @@ gr_addgid(gid_t gid,
   } else
     rc = -1;
   
-  return (rc < 0 ? rc : *groupc);
+  return (rc < 0 ? rc : 1);
 }
 
 
@@ -859,10 +859,10 @@ nss_ndb_getgroupmembership(void *res,
     /* Fall back to looping over all entries via getgrent_r() - slooooow */
     return NS_UNAVAIL;
   }
-  
+
   /* Add primary gid to groupv[] */
-  (void) gr_addgid(pgid, groupv, maxgrp, groupc);
-  ++ng;
+  if (gr_addgid(pgid, groupv, maxgrp, groupc) > 0)
+    ++ng;
   
   memset(&key, 0, sizeof(key));
   memset(&val, 0, sizeof(val));
@@ -897,13 +897,13 @@ nss_ndb_getgroupmembership(void *res,
       gid_t gid;
       
       if (sscanf(cp, "%u", &gid) == 1){
-	(void) gr_addgid(gid, groupv, maxgrp, groupc);
-	++ng;
+	if (gr_addgid(gid, groupv, maxgrp, groupc) > 0)
+	  ++ng;
       }
     }
   }
 
-  *groupc = ng;
+  *groupc = ng-1;
   _ndb_close(&ndb_grp_byuser);
   
   /* Let following nsswitch backend(s) add more groups(?) */
