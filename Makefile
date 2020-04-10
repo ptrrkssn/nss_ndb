@@ -28,17 +28,18 @@ PACKAGE=nss_ndb
 DEBUG=""
 #DEBUG="-DDEBUG=2"
 
-VERSION=1.0.18
-INCARGS=
-LIBARGS=
+#VERSION=1.0.18
+#INCARGS=
+#LIBARGS=
 
 #VERSION=1.4
 #INCARGS=-I/usr/local/include/db48
 #LIBARGS=-L/usr/local/lib/db48 -ldb
 
-#VERSION=1.5
+VERSION=1.5
 #INCARGS=-I/usr/local/include/db5
 #LIBARGS=-L/usr/local/lib/db5 -ldb
+LIBARGS=-ldb
 
 #VERSION=1.6
 #INCARGS=-I/usr/local/include/db6
@@ -88,8 +89,11 @@ install: $(LIB) $(BINS)
 	$(INSTALL) -o root -g wheel -m 0755 ndbsync $(DEST)/sbin
 	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DEST)/share/man/man1
 
+pull:
+	git pull
+
 push:	distclean
-	git commit -a && git push
+	git add -A && git commit -a && git push
 
 dist:	distclean
 	(cd ../dist && ln -sf ../$(PACKAGE) $(PACKAGE)-$(VERSION) && tar zcf $(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION)/* && rm $(PACKAGE)-$(VERSION))

@@ -31,8 +31,17 @@
 
 #include <unistd.h>
 #include <stdarg.h>
-#include <nsswitch.h>
 
+#ifdef __linux__
+#include <nss.h>
+#define NS_UNAVAIL  NSS_STATUS_UNAVAIL
+#define NS_SUCCESS  NSS_STATUS_SUCCESS
+#define NS_NOTFOUND NSS_STATUS_NOTFOUND
+#endif
+
+#ifdef __FreeBSD__
+#include <nsswitch.h>
+#endif
 
 /* master.passwd has 10 fields, standard passwd has 7 + extra NULL */
 #ifdef _PATH_MASTERPASSWD
@@ -121,9 +130,11 @@ nss_ndb_getgroupmembership(void *res,
 			   void *mdata,
 			   va_list ap);
 
+#ifdef __FreeBSD__
 extern ns_mtab *
 nss_module_register(const char *modname,
 		    unsigned int *plen,
 		    nss_module_unregister_fn *fptr);
+#endif
 
 #endif

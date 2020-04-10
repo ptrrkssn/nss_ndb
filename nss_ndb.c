@@ -233,7 +233,9 @@ str2passwd(char *str,
   }
 
   free(btmp);
+#ifdef __FreeBSD__
   pp->pw_fields = fc;
+#endif
   return 0;
 
  Fail:
@@ -664,10 +666,9 @@ nss_ndb_getpwuid_r(void *rv,
   int *res             = va_arg(ap, int *);
 
   char uidbuf[64];
-  int rc;
 
   
-  rc = snprintf(uidbuf, sizeof(uidbuf), "%u", uid);
+  (void) snprintf(uidbuf, sizeof(uidbuf), "%u", uid);
   /* XXX Check return value */
   
   return _ndb_getkey_r(&ndb_pwd_byuid,
@@ -749,9 +750,8 @@ nss_ndb_getgrgid_r(void *rv,
   int *res           = va_arg(ap, int *);
 
   char gidbuf[64];
-  int rc;
   
-  rc = snprintf(gidbuf, sizeof(gidbuf), "%u", gid);
+  (void) snprintf(gidbuf, sizeof(gidbuf), "%u", gid);
   /* XXX Check return value */
   
   return _ndb_getkey_r(&ndb_grp_bygid,
@@ -904,6 +904,7 @@ nss_ndb_getgroupmembership(void *res,
 }
 
 
+#ifdef __FreeBSD__
 ns_mtab *
 nss_module_register(const char *modname,
 		    unsigned int *plen,
@@ -929,7 +930,7 @@ nss_module_register(const char *modname,
   
   return mtab;
 }
-
+#endif
 
 /*
  * IMPLEMENTED:

@@ -39,7 +39,6 @@
 
 
 #ifdef WITH_NSS_NDB
-#include <nsswitch.h>
 #include "nss_ndb.h"
 #endif
 
