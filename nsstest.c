@@ -33,10 +33,13 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
+#ifdef __linux__
+#include <dlfcn.h>
+#define __USE_GNU 1
+#endif
 #include <pwd.h>
 #include <grp.h>
 #include <pthread.h>
-
 
 #ifdef WITH_NSS_NDB
 #include "nss_ndb.h"
@@ -224,6 +227,8 @@ s_time(double dt) {
 
 
 #ifdef WITH_NSS_NDB
+
+#ifdef __FreeBSD__
 int
 t_dispatch(const char *name,
 	   void *rv,
@@ -252,6 +257,37 @@ t_dispatch(const char *name,
   va_end(ap);
   return rc;
 }
+#endif
+
+#ifdef __linux__
+int
+t_dispatch(const char *name,
+	   void *rv,
+	   ...) {
+  int (*fc)();
+  int rc;
+  void *h;
+  char fname[1024];
+  va_list ap;
+  
+  
+  snprintf(fname, sizeof(fname), "nss_ndb_%s", name);
+  h = dlopen(NULL, RTLD_LAZY);
+  if (!h)
+    return -1;
+  
+  fc = dlsym(h, fname);
+  if (!fc)
+    return -1;
+  
+  va_start(ap, rv);
+  rc = (*fc)(rv, NULL, ap);  
+  va_end(ap);
+  
+  return rc;
+}
+#endif
+
 #endif
 
 
@@ -388,10 +424,14 @@ nsserror(int nc) {
     return "Not Found";
   case NS_TRYAGAIN:
     return "Try Again";
+#ifdef NS_RETURN
   case NS_RETURN:
     return "Return";
+#endif
+#ifdef NS_TERMINATE
   case NS_TERMINATE:
     return "Terminate";
+#endif
   default:
     return "Unknown";
   }
@@ -1397,8 +1437,14 @@ main(int argc,
   }
 
   if (f_stayopen) {
+#ifdef __linux__
+    setpwent();
+    setgrent();
+#endif
+#ifdef __FreeBSD__
     setpassent(1);
     setgroupent(1);
+#endif
   }
 
   t_nc = 0;

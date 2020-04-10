@@ -100,7 +100,7 @@ dist:	distclean
 
 
 nsstest:	nsstest.o nss_ndb.o
-	$(CC) -g -o nsstest nsstest.o nss_ndb.o -lpthread
+	$(CC) -g -o nsstest nsstest.o nss_ndb.o -lpthread -ldl $(LIBARGS)
 
 
 VALGRIND=valgrind --leak-check=full --error-exitcode=1

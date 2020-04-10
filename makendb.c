@@ -150,7 +150,8 @@ add_user_group(NDB *db,
 	rc = _ndb_put(db, &key, &val, 0);
 	if (rc < 0) {
 	  if (debug_f)
-	    fprintf(stderr, "*** add_user_group: %.*s: db->put: %s\n", (int) key.size, key.data, strerror(errno));
+	    fprintf(stderr, "*** add_user_group: %.*s: db->put: %s\n",
+		    (int) key.size, (char *) key.data, strerror(errno));
 	  return -1;
 	}
 	
@@ -176,7 +177,8 @@ add_user_group(NDB *db,
       rc = _ndb_put(db, &key, &val, 0);
       if (rc < 0) {
 	if (debug_f)
-	  fprintf(stderr, "*** add_user_group: %.*s: db->put: %s\n", (int) key.size, key.data, strerror(errno));
+	  fprintf(stderr, "*** add_user_group: %.*s: db->put: %s\n",
+		  (int) key.size, (char *) key.data, strerror(errno));
 	return -1;
       }
       
@@ -194,7 +196,8 @@ main(int argc,
   NDB db_id, db_name, db_user, db;
   DBT key, val;
   int rc, ni,line, fd;
-  char *name, *id, *cp, *buf;
+  char *name, *cp, *buf;
+  char *id = NULL;
   char *type = NULL;
   char path[2048], *p_name, *p_id, *p_user;
   int i, j;
@@ -308,8 +311,8 @@ main(int argc,
 	rc = _ndb_get(&db, &key, &val, DB_NEXT);
 	if (rc == 0) {
 	  if (key_f)
-	    printf("%-14.*s\t", (int) key.size, key.data);
-	  printf("%.*s\n", (int) val.size, val.data);
+	    printf("%-14.*s\t", (int) key.size, (char *) key.data);
+	  printf("%.*s\n", (int) val.size, (char *) val.data);
 	}
       } while (rc == 0);
 

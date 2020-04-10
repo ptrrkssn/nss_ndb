@@ -34,9 +34,10 @@
 
 #ifdef __linux__
 #include <nss.h>
+#define NS_TRYAGAIN NSS_STATUS_TRYAGAIN
 #define NS_UNAVAIL  NSS_STATUS_UNAVAIL
-#define NS_SUCCESS  NSS_STATUS_SUCCESS
 #define NS_NOTFOUND NSS_STATUS_NOTFOUND
+#define NS_SUCCESS  NSS_STATUS_SUCCESS
 #endif
 
 #ifdef __FreeBSD__
