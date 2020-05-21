@@ -28,18 +28,17 @@ PACKAGE=nss_ndb
 DEBUG=""
 #DEBUG="-DDEBUG=2"
 
-#VERSION=1.0.18
-#INCARGS=
-#LIBARGS=
+VERSION=1.0.18
+INCARGS=
+LIBARGS=
 
 #VERSION=1.4
 #INCARGS=-I/usr/local/include/db48
 #LIBARGS=-L/usr/local/lib/db48 -ldb
 
-VERSION=1.5
+#VERSION=1.5
 #INCARGS=-I/usr/local/include/db5
 #LIBARGS=-L/usr/local/lib/db5 -ldb
-LIBARGS=-ldb
 
 #VERSION=1.6
 #INCARGS=-I/usr/local/include/db6
