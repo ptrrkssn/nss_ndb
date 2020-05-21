@@ -187,6 +187,15 @@ t-info:
 check-valgrind valgrind:
 	$(MAKE) TESTCMD="$(VALGRIND) $(TESTCMD)" TESTUSER="$(TESTUSER)" check-all
 
+# Some arguments for "nsstest":
+#
+# "-x" = expect to fail (give an error if it doesn't)
+# -P10" = run 10 threads in parallell (try to force multithreading bugs)
+# -C"xxx" = Expected result - give an error if the output doesn't match exactly
+# -s = keep the database open (setpwent/setgrent)
+# -4711 = invalid user id (change if you use it :-)
+# no-such-user = invalid user name (change if you use it :-)
+#
 t-ndb_passwd:
 	@echo "";echo "--- Starting 'passwd' tests directly against NDB for user $(TESTUSER) and uid $(TESTUID)";echo ""
 	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" ndb_getpwnam_r $(TESTUSER)
@@ -275,5 +284,11 @@ t-group: $(NSSTEST)
 
 t-other: $(NSSTEST)
 	@echo "";echo "--- Starting 'grouplist' tests via NSS for user $(TESTUSER)";echo ""
-	$(TESTCMD) $(TESTOPTS) -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
-
+	$(TESTCMD) $(TESTOPTS) -v -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -v -C"no-such-user:-1" getgrouplist no-such-user
+	$(TESTCMD) $(TESTOPTS) -v -s -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -v -s -C"no-such-user:-1" getgrouplist no-such-user
+	$(TESTCMD) $(TESTOPTS) -v -P10 -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -v -P10 -C"no-such-user:-1" getgrouplist no-such-user
+# "-x" doesn't yield the expected result here - it is NOT an error to call getgrouplist() with an
+# unknown user, it just returns the "basegid" specified (which we set to -1 in our test here).

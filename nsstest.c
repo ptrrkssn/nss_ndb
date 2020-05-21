@@ -1294,18 +1294,23 @@ t_getgrouplist(int argc,
 
 
   for (i = 1; i < argc; i++) {
-    struct passwd *pp = NULL;
-
+    char buf[2048];
+    struct passwd pbuf, *pp = NULL;
     int ngv = n_bufsize / sizeof(gid_t);
     gid_t *gidv = (gid_t *) xp;
+    int ec;
+    
 
-
-    pp = getpwnam(argv[i]);
-    if (!pp) {
-      fprintf(stderr, "%s: Error: %s: Invalid user\n", argv0, argv[i]);
+    pp = NULL;
+    ec = getpwnam_r(argv[i], &pbuf, buf, sizeof(buf), &pp);
+    if (ec) {
+      fprintf(stderr, "%s: Error: %s: Lookup up user: %s\n", argv0, argv[i], strerror(ec));
       exit(1);
     }
-    
+#if 0
+    if (!pp)
+      return 1;
+#endif
     errno = 0;
     if (getgrouplist(argv[i], pp ? pp->pw_gid : -1, &gidv[0], &ngv) < 0) {
       if (errno) {
@@ -1316,6 +1321,11 @@ t_getgrouplist(int argc,
       fprintf(stderr, "%s: Error: getgrouplist(\"%s\") failed: Buffer size too small\n", argv0, argv[i]);
       exit(1);
     }
+
+    if (ngv == 0 || (!pp && (ngv > 1 || gidv[0] != -1))) {
+      /* No gids found, or unknown user and more than the basegid gids found */
+      return 1;
+    }
     
     ++*ncp;
     
@@ -1324,13 +1334,18 @@ t_getgrouplist(int argc,
     
     if (f_check && 
 	(checkdata && strcmp(sbuf, checkdata) != 0)) {
-      fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
-	      argv0, sbuf);
+      fprintf(stderr, "%s: Error: Returned data failed validation\n",
+	      argv0);
+      if (f_verbose)
+	fprintf(stderr, "\tExpected: %s\n\tReturned: %s\n",
+		checkdata, sbuf);
       exit(1);
     }
-    
+
+#if 0
     if (f_verbose)
       puts(sbuf);
+#endif
   }
   
   return 0;
