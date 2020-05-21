@@ -1,3 +1,6 @@
+# Makefile for the nss_ndb library & tools
+#
+# Copyright (c) 2017-2020 Peter Eriksson <pen@lysator.liu.se>
 # All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without
@@ -30,21 +33,34 @@ DBDIR=/var/db/nss_ndb
 DEBUG=""
 #DEBUG="-DDEBUG=2"
 
+
+#### Default version, uses the old libc-builtin BerkeleyDB version
+
 VERSION=1.0.19
 INCARGS=
 LIBARGS=
+
+
+### BerkeleyDB 4 - uses the "db48" package
 
 #VERSION=1.4
 #INCARGS=-I/usr/local/include/db48
 #LIBARGS=-L/usr/local/lib/db48 -ldb
 
+
+### BerkeleyDB 5 - uses the "db5" package
+
 #VERSION=1.5
 #INCARGS=-I/usr/local/include/db5
 #LIBARGS=-L/usr/local/lib/db5 -ldb
 
+
+### BerkeleyDB 6 - uses the "db6" package
+
 #VERSION=1.6
 #INCARGS=-I/usr/local/include/db6
 #LIBARGS=-L/usr/local/lib/db6 -ldb
+
 
 CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
 
@@ -97,6 +113,7 @@ distclean: clean
 	-rm -f *.so.* $(BINS)
 
 install: $(LIB) $(BINS)
+	mkdir -p $(DBDIR)
 	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DEST)/lib && ln -sf $(LIB) $(DEST)/lib/nss_ndb.so.1
 	$(INSTALL) -o root -g wheel -m 0755 $(BINS) $(DEST)/bin
 	$(INSTALL) -o root -g wheel -m 0755 ndbsync $(DEST)/sbin
