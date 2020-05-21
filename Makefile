@@ -25,10 +25,12 @@ DEST=/usr
 
 PACKAGE=nss_ndb
 
+DBDIR=/var/db/nss_ndb
+
 DEBUG=""
 #DEBUG="-DDEBUG=2"
 
-VERSION=1.0.18
+VERSION=1.0.19
 INCARGS=
 LIBARGS=
 
@@ -46,23 +48,35 @@ LIBARGS=
 
 CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
 
-CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) -DWITH_NSS_NDB=1
+CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) -DPATH_NSS_NDB='"$(DBDIR)"' -DWITH_NSS_NDB=1
 
 LDFLAGS=$(LIBARGS) 
 
 LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
 
-#TESTUSER=peter86
-TESTUID=1003258
-TESTUSER=tesje148
-TESTUID=11189
-TESTGROUP=isy-ifm
-#TESTGID=100001000
-TESTGID=180000138
-TCPASSWD=tesje148:*:11189:100000000:Testkonto Jean-Jacquesmoulis:/home/tesje148:/bin/sh
-TCGROUP=isy-ifm:*:180000138:peter86
-TCGRPLIST=tesje148:100000000
+
+# You probably want to modify these parameters before running "make tests"
+# The TESTUSER should be a user defined in the NDB database
+
+TESTUSER=$$USER
+#TESTUSER=tesje148
+
+#TESTUID=1003258
+TESTUID=`id -ur $(TESTUSER)`
+
+#TESTGID=180000138
+#TESTGROUP=isy-ifm
+TESTGID=`id -gr $(TESTUSER)`
+TESTGROUP=`id -gn $(TESTUSER)`
+
+#TCPASSWD=tesje148:*:11189:100000000:Testkonto Jean-Jacquesmoulis:/home/tesje148:/bin/sh
+#TCGROUP=isy-ifm:*:180000138:peter86
+TCPASSWD=`getent passwd \`id -un $(TESTUSER)\``
+TCGROUP=`getent group \`id -gn $(TESTUSER)\``
+
+#TCGRPLIST=tesje148:100000000
+TCGRPLIST=$(TESTUSER):`id -G $(TESTUSER) | tr ' ' '\n' | sort -n | tr '\n' ',' | sed -e 's/,$$//'`
 
 BINS=makendb nsstest
 
@@ -107,31 +121,71 @@ VALGRIND=valgrind --leak-check=full --error-exitcode=1
 TESTCMD=./nsstest
 TESTOPTS=
 
-tests: t-passwd t-group t-other t-ndb_passwd
+tests:  t-info t-checkdb t-ndb_passwd t-ndb_group t-passwd t-group t-other
+
+t-checkdb: $(DBDIR)/passwd.byuid.db $(DBDIR)/passwd.byname.db $(DBDIR)/group.bygid.db $(DBDIR)/group.bygid.db $(DBDIR)/group.byname.db
+
+t-info: 
+	@echo "PLEASE NOTE:"
+	@echo "1. You must have the NDB database files updated with content in $(DBDIR)"
+	@echo "2. You should expect 'make tests' to fail for any user not in the NDB."
+	@echo "To solve #2, use 'make TESTUSER=some-user-in-ndb tests'."
+	@echo ""
 
 valgrind:
 	$(MAKE) TESTCMD="$(VALGRIND) $(TESTCMD)" tests
 
+t-ndb_passwd:
+	@echo "";echo "--- Starting 'passwd' tests directly against NDB for user $(TESTUSER) and uid $(TESTUID)";echo ""
+	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" ndb_getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -x ndb_getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) -P10 -C"$(TCPASSWD)" ndb_getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -P10 -x ndb_getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCPASSWD)" ndb_getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getpwnam_r no-such-user
+	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" ndb_getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -x ndb_getpwuid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 -C"$(TCPASSWD)" ndb_getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -P10 -x ndb_getpwuid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCPASSWD)" ndb_getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getpwuid_r -4711
+
+t-ndb_group:
+	@echo "";echo "--- Starting 'group' tests directly against NDB for group $(TESTGROUP) and gid $(TESTGID)";echo ""
+	$(TESTCMD) $(TESTOPTS) -C"$(TCGROUP)" ndb_getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -x ndb_getgrnam_r no-such-group
+	$(TESTCMD) $(TESTOPTS) -P10 -C"$(TCGROUP)" ndb_getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -P10 -x ndb_getgrnam_r no-such-group
+	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCGROUP)" ndb_getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getgrnam_r no-such-group
+	$(TESTCMD) $(TESTOPTS) -C"$(TCGROUP)" ndb_getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -x ndb_getgrgid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 -C"$(TCGROUP)" ndb_getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -P10 -x ndb_getgrgid_r -4711
+	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCGROUP)" ndb_getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getgrgid_r -4711
+
 t-passwd: $(NSSTEST)
-	$(TESTCMD) $(TESTOPTS) -C'$(TCPASSWD)' getpwnam $(TESTUSER)
+	@echo "";echo "--- Starting 'passwd' tests via NSS for user $(TESTUSER) and uid $(TESTUID)";echo ""
+	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" getpwnam $(TESTUSER)
 	$(TESTCMD) $(TESTOPTS) -x getpwnam no-such-user
-	$(TESTCMD) $(TESTOPTS) -s -C'$(TCPASSWD)' getpwnam $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -s -C"$(TCPASSWD)" getpwnam $(TESTUSER)
 	$(TESTCMD) $(TESTOPTS) -s -x getpwnam no-such-user
-	$(TESTCMD) $(TESTOPTS) -C'$(TCPASSWD)' getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" getpwnam_r $(TESTUSER)
 	$(TESTCMD) $(TESTOPTS) -x getpwnam_r no-such-user
-	$(TESTCMD) $(TESTOPTS) -P10 -C'$(TCPASSWD)' getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -P10 -C"$(TCPASSWD)" getpwnam_r $(TESTUSER)
 	$(TESTCMD) $(TESTOPTS) -P10 -x getpwnam_r no-such-user
-	$(TESTCMD) $(TESTOPTS) -P10 -s -C'$(TCPASSWD)' getpwnam_r $(TESTUSER)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCPASSWD)" getpwnam_r $(TESTUSER)
 	$(TESTCMD) $(TESTOPTS) -P10 -s -x getpwnam_r no-such-user
-	$(TESTCMD) $(TESTOPTS) -C'$(TCPASSWD)' getpwuid $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" getpwuid $(TESTUID)
 	$(TESTCMD) $(TESTOPTS) -x getpwuid -4711
-	$(TESTCMD) $(TESTOPTS) -s -C'$(TCPASSWD)' getpwuid $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -s -C"$(TCPASSWD)" getpwuid $(TESTUID)
 	$(TESTCMD) $(TESTOPTS) -s -x getpwuid -4711
-	$(TESTCMD) $(TESTOPTS) -C'$(TCPASSWD)' getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" getpwuid_r $(TESTUID)
 	$(TESTCMD) $(TESTOPTS) -x getpwuid_r -4711
-	$(TESTCMD) $(TESTOPTS) -P10 -C'$(TCPASSWD)' getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -P10 -C"$(TCPASSWD)" getpwuid_r $(TESTUID)
 	$(TESTCMD) $(TESTOPTS) -P10 -x getpwuid_r -4711
-	$(TESTCMD) $(TESTOPTS) -P10 -s -C'$(TCPASSWD)' getpwuid_r $(TESTUID)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCPASSWD)" getpwuid_r $(TESTUID)
 	$(TESTCMD) $(TESTOPTS) -P10 -s -x getpwuid_r -4711
 	$(TESTCMD) $(TESTOPTS) getpwent
 	$(TESTCMD) $(TESTOPTS) -s getpwent
@@ -139,40 +193,27 @@ t-passwd: $(NSSTEST)
 	$(TESTCMD) $(TESTOPTS) -P10 getpwent_r
 	$(TESTCMD) $(TESTOPTS) -P10 -s getpwent_r
 
-t-ndb_passwd:
-	$(TESTCMD) $(TESTOPTS) -C'$(TCPASSWD)' ndb_getpwnam_r $(TESTUSER)
-	$(TESTCMD) $(TESTOPTS) -x ndb_getpwnam_r no-such-user
-	$(TESTCMD) $(TESTOPTS) -P10 -C'$(TCPASSWD)' ndb_getpwnam_r $(TESTUSER)
-	$(TESTCMD) $(TESTOPTS) -P10 -x ndb_getpwnam_r no-such-user
-	$(TESTCMD) $(TESTOPTS) -P10 -s -C'$(TCPASSWD)' ndb_getpwnam_r $(TESTUSER)
-	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getpwnam_r no-such-user
-	$(TESTCMD) $(TESTOPTS) -C'$(TCPASSWD)' ndb_getpwuid_r $(TESTUID)
-	$(TESTCMD) $(TESTOPTS) -x ndb_getpwuid_r -4711
-	$(TESTCMD) $(TESTOPTS) -P10 -C'$(TCPASSWD)' ndb_getpwuid_r $(TESTUID)
-	$(TESTCMD) $(TESTOPTS) -P10 -x ndb_getpwuid_r -4711
-	$(TESTCMD) $(TESTOPTS) -P10 -s -C'$(TCPASSWD)' ndb_getpwuid_r $(TESTUID)
-	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getpwuid_r -4711
-
 t-group: $(NSSTEST)
-	$(TESTCMD) $(TESTOPTS) -C'$(TCGROUP)' getgrnam $(TESTGROUP)
+	@echo "";echo "--- Starting 'group' tests via NSS for group $(TESTGROUP) and gid $(TESTGID)";echo ""
+	$(TESTCMD) $(TESTOPTS) -C"$(TCGROUP)" getgrnam $(TESTGROUP)
 	$(TESTCMD) $(TESTOPTS) -x getgrnam no-such-group
-	$(TESTCMD) $(TESTOPTS) -s -C'$(TCGROUP)' getgrnam $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -s -C"$(TCGROUP)" getgrnam $(TESTGROUP)
 	$(TESTCMD) $(TESTOPTS) -s -x getgrnam no-such-group
-	$(TESTCMD) $(TESTOPTS) -C'$(TCGROUP)' getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -C"$(TCGROUP)" getgrnam_r $(TESTGROUP)
 	$(TESTCMD) $(TESTOPTS) -x getgrnam_r no-such-group
-	$(TESTCMD) $(TESTOPTS) -P10 -C'$(TCGROUP)' getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -P10 -C"$(TCGROUP)" getgrnam_r $(TESTGROUP)
 	$(TESTCMD) $(TESTOPTS) -P10 -x getgrnam_r no-such-group
-	$(TESTCMD) $(TESTOPTS) -P10 -s -C'$(TCGROUP)' getgrnam_r $(TESTGROUP)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCGROUP)" getgrnam_r $(TESTGROUP)
 	$(TESTCMD) $(TESTOPTS) -P10 -s -x getgrnam_r no-such-group
-	$(TESTCMD) $(TESTOPTS) -C'$(TCGROUP)' getgrgid $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -C"$(TCGROUP)" getgrgid $(TESTGID)
 	$(TESTCMD) $(TESTOPTS) -x getgrgid -4711
-	$(TESTCMD) $(TESTOPTS) -s -C'$(TCGROUP)' getgrgid $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -s -C"$(TCGROUP)" getgrgid $(TESTGID)
 	$(TESTCMD) $(TESTOPTS) -s -x getgrgid -4711
-	$(TESTCMD) $(TESTOPTS) -C'$(TCGROUP)' getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -C"$(TCGROUP)" getgrgid_r $(TESTGID)
 	$(TESTCMD) $(TESTOPTS) -x getgrgid_r -4711
-	$(TESTCMD) $(TESTOPTS) -P10 -C'$(TCGROUP)' getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -P10 -C"$(TCGROUP)" getgrgid_r $(TESTGID)
 	$(TESTCMD) $(TESTOPTS) -P10 -x getgrgid_r -4711
-	$(TESTCMD) $(TESTOPTS) -P10 -s -C'$(TCGROUP)' getgrgid_r $(TESTGID)
+	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCGROUP)" getgrgid_r $(TESTGID)
 	$(TESTCMD) $(TESTOPTS) -P10 -s -x getgrgid_r -4711
 	$(TESTCMD) $(TESTOPTS) getgrent
 	$(TESTCMD) $(TESTOPTS) -s getgrent
@@ -181,5 +222,6 @@ t-group: $(NSSTEST)
 	$(TESTCMD) $(TESTOPTS) -P10 -s getgrent_r
 
 t-other: $(NSSTEST)
-	$(TESTCMD) $(TESTOPTS) -C'$(TCGRPLIST)' getgrouplist $(TESTUSER)
+	@echo "";echo "--- Starting 'grouplist' tests via NSS for user $(TESTUSER)";echo ""
+	$(TESTCMD) $(TESTOPTS) -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
 

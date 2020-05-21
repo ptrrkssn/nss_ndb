@@ -387,14 +387,18 @@ t_getpwnam_r(int argc,
       if (f_check && 
 	  (!c_passwd(pp) ||
 	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
-	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
-		argv0, sbuf);
+	fprintf(stderr, "%s: Error: Returned data failed validation\n", argv0);
+	if (f_verbose)
+	  fprintf(stderr, "\tExpected: %s\n\tReturned: %s\n",
+		checkdata, sbuf);
 	exit(1);
       }
-      
+
+#if 0
       if (f_verbose)
 	puts(sbuf);
-
+#endif
+      
       trc = 0;
     }
 
@@ -564,6 +568,142 @@ t_ndb_getpwuid_r(int argc,
 
     if (rc >= 0 && rc != trc) {
       fprintf(stderr, "%s: Error: ndb_getpwuid_r(\"%s\") not yielding similar result as previous\n",
+	      argv0, argv[i]);
+      exit(1);
+    }
+    
+    rc = trc;
+  }
+
+  return rc;
+}
+
+int
+t_ndb_getgrnam_r(int argc,
+		 char *argv[],
+		 void *xp,
+		 unsigned long *ncp) {
+  char *buf = (char *) xp;
+  int i, rc = -1;
+  char sbuf[MAXGROUP];
+  
+  
+  for (i = 1; i < argc; i++) {
+    struct group gbuf, *gp = NULL;
+    int nc, ec = 0, trc = -1;
+    
+
+    nc = t_dispatch("getgrnam_r", &gp, argv[i], &gbuf, buf, n_bufsize, &ec);
+    if (nc != NS_SUCCESS && nc != NS_NOTFOUND) {
+      fprintf(stderr, "%s: Internal Error: t_dispatch(getgrnam_r, \"%s\") returned: %s\n",
+	      argv0, argv[i], nsserror(nc));
+      exit(1);
+    }
+    
+    if (!gp && ec) {
+      fprintf(stderr, "%s: Error: ndb_getgrnam_r(\"%s\") failed: %s\n",
+	      argv0, argv[i], strerror(ec));
+      exit(1);
+    }
+    
+    ++*ncp;
+    
+    if (!gp) {
+      if (f_verbose)
+	fprintf(stderr, "%s: Error: ndb_getgrnam_r(\"%s\"): Group not found\n",
+		argv0, argv[i]);
+      trc = 1;
+    } else {
+      if (f_verbose || f_check)
+	s_group(sbuf, sizeof(sbuf), gp);
+      
+      if (f_check && 
+	  (!c_group(gp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
+      if (f_verbose)
+	puts(sbuf);
+      
+      trc = 0;
+    }
+
+    if (rc >= 0 && rc != trc) {
+      fprintf(stderr, "%s: Error: ndb_getgrnam_r(\"%s\") not yielding similar result as previous\n",
+	      argv0, argv[i]);
+      exit(1);
+    }
+    
+    rc = trc;
+  }
+
+  return rc;
+}
+
+int
+t_ndb_getgrgid_r(int argc,
+		 char *argv[],
+		 void *xp,
+		 unsigned long *ncp) {
+  char *buf = (char *) xp;
+  int i, rc = -1;
+  char sbuf[MAXGROUP];
+  
+  
+  for (i = 1; i < argc; i++) {
+    struct group gbuf, *gp = NULL;
+    int nc, ec = 0, trc = -1;
+    gid_t gid;
+    
+
+    if (sscanf(argv[i], "%d", &gid) != 1) {
+      fprintf(stderr, "%s: Error: %s: Invalid gid\n", argv0, argv[i]);
+      exit(1);
+    }
+    
+    nc = t_dispatch("getgrgid_r", &gp, gid, &gbuf, buf, n_bufsize, &ec);
+    if (nc != NS_SUCCESS && nc != NS_NOTFOUND) {
+      fprintf(stderr, "%s: Internal Error: t_dispatch(getgrgid_r, \"%s\") returned: %s\n",
+	      argv0, argv[i], nsserror(nc));
+      exit(1);
+    }
+
+    if (!gp && ec) {
+      fprintf(stderr, "%s: Error: ndb_getgrgid_r(\"%s\") failed: %s\n",
+	      argv0, argv[i], strerror(ec));
+      exit(1);
+    }
+    
+    ++*ncp;
+    
+    if (!gp) {
+      if (f_verbose)
+	fprintf(stderr, "%s: Error: ndb_getgrgid_r(\"%s\"): GID (Group ID) not found\n",
+		argv0, argv[i]);
+      trc = 1;
+    } else {
+      if (f_verbose || f_check)
+	s_group(sbuf, sizeof(sbuf), gp);
+      
+      if (f_check && 
+	  (!c_group(gp) ||
+	   (checkdata && strcmp(sbuf, checkdata) != 0))) {
+	fprintf(stderr, "%s: Error: %s: Returned data failed validation\n",
+		argv0, sbuf);
+	exit(1);
+      }
+      
+      if (f_verbose)
+	puts(sbuf);
+      
+      trc = 0;
+    }
+
+    if (rc >= 0 && rc != trc) {
+      fprintf(stderr, "%s: Error: ndb_getgrgid_r(\"%s\") not yielding similar result as previous\n",
 	      argv0, argv[i]);
       exit(1);
     }
@@ -1219,6 +1359,8 @@ static struct action {
 #ifdef WITH_NSS_NDB
 	       { "ndb_getpwnam_r",   &t_ndb_getpwnam_r },
 	       { "ndb_getpwuid_r",   &t_ndb_getpwuid_r },
+	       { "ndb_getgrnam_r",   &t_ndb_getgrnam_r },
+	       { "ndb_getgrgid_r",   &t_ndb_getgrgid_r },
 #endif
 
 	       { NULL,           NULL },
@@ -1263,7 +1405,11 @@ run_test(void *xp) {
     
     rc = (*tap->tf)(tap->argc, tap->argv, (void *) buf, &tap->nc);
     if ((rc && !f_expfail) || (!rc && f_expfail)) {
-      fprintf(stderr, "%s: Error: %s yielded unexpected result (rc=%d)\n", argv0, tap->argv[0], rc);
+      fprintf(stderr, "%s: Error: %s(%s) yielded unexpected result (rc=%d)\n",
+	      argv0,
+	      tap->argv[0],
+	      tap->argv[1] ? tap->argv[1] : "NULL",
+	      rc);
       exit(1);
     }
     
