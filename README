@@ -1,7 +1,7 @@
 Title:	 nss_ndb
-Version: 1.0.18
+Version: 1.0.19
 Author:  Peter Eriksson <pen@lysator.liu.se>
-Date:    2019-11-28
+Date:    2020-05-21
 
 
 DESCRIPTION
@@ -31,14 +31,54 @@ The source code for this project can be downloaded from:
 
 BUILD
 
-Just run "make". To install into /usr/lib & /usr/bin, use "make install".
+By default it will build and install the library and the binaries into
+/usr/local/{lib,bin,sbin} but you probably want it to install into
+/usr/{lib,bin,sbin} so it will be available early on during system boot
+in case /usr/local is on a filesystem not mounted directly.
+
+The "PREFIX" variable in the Makefile can be used to specify alternative
+installation locations (defaults to /usr/local)
+
+The database should be kept in /var/db/nss_ndb, but can be relocated via
+the "DBDIR" variable in the Makefile
+
+To compile run:
+
+  make PREFIX=/usr
+
+To install into /usr/lib, /usr/bin & /usr/bin, use:
+
+  make PREFIX=/usr install
+
+In order to make "nsswitch" use the newly installed "nss_ndb.so.VERSION" run:
+
+  make PREFIX=/usr install-nsslink
 
 
 TESTING
 
-Run "make tests". This will compile the "nsstest" tool and then run a number
-of validation tests on the code. Run "make valgrind" to run the same tests under
-the valgrind memory leak/test tool.
+First make sure you have created the database files in /var/db/nss_ndb and
+populated them with data.
+
+Then run (replace 'some-user-in-the-ndb-database' first):
+
+  make TESTUSER=some-user-in-the-ndb-database check-ndb
+
+This will use the "nsstest" tool and then run a number of validation tests on
+the code.
+
+
+MORE TESTING
+
+Make sure ndb is activated in /etc/nsswitch.conf then some more complete tests
+can be done via:
+
+  make TESTUSER=some-user check
+
+To run the same tests under the 'valgrind' memory leak/test tool do:
+
+  make TESTUSER=some-user valgrind
+
 
 
 USAGE

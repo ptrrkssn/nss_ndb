@@ -24,11 +24,25 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-DEST=/usr
-
+# Our package name
 PACKAGE=nss_ndb
 
+# Where most of the stuff is installed
+PREFIX=/usr/local
+
+# The library where nsswitch looks for modules
+NSSLIBDIR=/usr/lib
+
+# Where we keep the database
 DBDIR=/var/db/nss_ndb
+
+# For a production system you probably want LIBDIR=$(NSSLIBDIR)
+LIBDIR=$(PREFIX)/lib
+
+BINDIR=$(PREFIX)/bin
+SBINDIR=$(PREFIX)/sbin
+MANDIR=$(PREFIX)/share/man
+
 
 DEBUG=""
 #DEBUG="-DDEBUG=2"
@@ -64,7 +78,7 @@ LIBARGS=
 
 CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
 
-CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) -DPATH_NSS_NDB='"$(DBDIR)"' -DWITH_NSS_NDB=1
+CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) -DPATH_NSS_NDB='"$(DBDIR)"'
 
 LDFLAGS=$(LIBARGS) 
 
@@ -103,6 +117,9 @@ $(LIB): $(LIBOBJS)
 
 makendb.o: makendb.c ndb.h
 
+nsstest.o: nsstest.c ndb.h
+	$(CC) $(CFLAGS) -DWITH_NSS_NDB=1 -c nsstest.c
+
 makendb: makendb.o nss_ndb.o
 	$(CC) -g -o makendb makendb.o nss_ndb.o $(LIBARGS)
 
@@ -112,12 +129,26 @@ clean:
 distclean: clean
 	-rm -f *.so.* $(BINS)
 
-install: $(LIB) $(BINS)
+install: install-lib install-bin install-sbin install-db
+
+install-db:
 	mkdir -p $(DBDIR)
-	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DEST)/lib && ln -sf $(LIB) $(DEST)/lib/nss_ndb.so.1
-	$(INSTALL) -o root -g wheel -m 0755 $(BINS) $(DEST)/bin
-	$(INSTALL) -o root -g wheel -m 0755 ndbsync $(DEST)/sbin
-	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DEST)/share/man/man1
+
+install-bin: $(BINS)
+	$(INSTALL) -o root -g wheel -m 0755 $(BINS) $(BINDIR)
+
+install-sbin: ndbsync
+	$(INSTALL) -o root -g wheel -m 0755 ndbsync $(SBINDIR)
+
+install-man:
+	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(MANDIR)/man1
+
+install-lib: $(LIB)
+	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(LIBDIR)
+	@echo "Do not forget 'make install-nsslink' if you want 'nsswitch' to use the installed library."
+
+install-nsslink: install-lib
+	ln -sf $(LIBDIR)/$(LIB) $(NSSLIBDIR)/nss_ndb.so.1
 
 pull:
 	git pull
@@ -138,7 +169,11 @@ VALGRIND=valgrind --leak-check=full --error-exitcode=1
 TESTCMD=./nsstest
 TESTOPTS=
 
-tests:  t-info t-checkdb t-ndb_passwd t-ndb_group t-passwd t-group t-other
+tests check check-all: check-ndb check-nss
+
+check-ndb: nsstest t-info t-checkdb t-ndb_passwd t-ndb_group
+check-nss: nsstest t-checkdb t-passwd t-group t-other
+
 
 t-checkdb: $(DBDIR)/passwd.byuid.db $(DBDIR)/passwd.byname.db $(DBDIR)/group.bygid.db $(DBDIR)/group.bygid.db $(DBDIR)/group.byname.db
 
@@ -149,8 +184,8 @@ t-info:
 	@echo "To solve #2, use 'make TESTUSER=some-user-in-ndb tests'."
 	@echo ""
 
-valgrind:
-	$(MAKE) TESTCMD="$(VALGRIND) $(TESTCMD)" tests
+check-valgrind valgrind:
+	$(MAKE) TESTCMD="$(VALGRIND) $(TESTCMD)" TESTUSER="$(TESTUSER)" check-all
 
 t-ndb_passwd:
 	@echo "";echo "--- Starting 'passwd' tests directly against NDB for user $(TESTUSER) and uid $(TESTUID)";echo ""
