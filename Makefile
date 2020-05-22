@@ -169,13 +169,16 @@ VALGRIND=valgrind --leak-check=full --error-exitcode=1
 TESTCMD=./nsstest
 TESTOPTS=
 
-tests check check-all: check-ndb check-nss
+check tests:	 t-info t-checkdb check-all
 
-check-ndb: nsstest t-info t-checkdb t-ndb_passwd t-ndb_group
-check-nss: nsstest t-checkdb t-passwd t-group t-other
+check-all:	 check-ndb check-nss
 
+check-ndb:	 t-ndb_passwd t-ndb_group
+check-nss:	 t-passwd t-group t-grouplist
 
-t-checkdb: $(DBDIR)/passwd.byuid.db $(DBDIR)/passwd.byname.db $(DBDIR)/group.bygid.db $(DBDIR)/group.bygid.db $(DBDIR)/group.byname.db
+check-passwd:    t-ndb_passwd t-passwd
+check-group:     t-ndb_group t-group
+check-grouplist: t-grouplist
 
 t-info: 
 	@echo "PLEASE NOTE:"
@@ -183,6 +186,17 @@ t-info:
 	@echo "2. You should expect 'make tests' to fail for any user not in the NDB."
 	@echo "To solve #2, use 'make TESTUSER=some-user-in-ndb tests'."
 	@echo ""
+
+t-checkdb:
+	@for DB in passwd.byname passwd.byuid; do \
+	  test -f "$(DBDIR)/$${DB}.db" || echo "Missing $(DBDIR)/$${DB}.db - you must populate the 'passwd' database"; \
+	done
+	@for DB in group.byname group.bygid; do \
+	  test -f "$(DBDIR)/$${DB}.db" || echo "Missing $(DBDIR)/$${DB}.db - you must populate the 'group' database"; \
+	done
+	@for DB in group.byuser; do \
+	  test -f "$(DBDIR)/$${DB}.db" || echo "Missing $(DBDIR)/$${DB}.db"; \
+	done
 
 check-valgrind valgrind:
 	$(MAKE) TESTCMD="$(VALGRIND) $(TESTCMD)" TESTUSER="$(TESTUSER)" check-all
@@ -196,7 +210,7 @@ check-valgrind valgrind:
 # -4711 = invalid user id (change if you use it :-)
 # no-such-user = invalid user name (change if you use it :-)
 #
-t-ndb_passwd:
+t-ndb_passwd: nsstest $(DBDIR)/passwd.byuid.db $(DBDIR)/passwd.byname.db
 	@echo "";echo "--- Starting 'passwd' tests directly against NDB for user $(TESTUSER) and uid $(TESTUID)";echo ""
 	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" ndb_getpwnam_r $(TESTUSER)
 	$(TESTCMD) $(TESTOPTS) -x ndb_getpwnam_r no-such-user
@@ -211,7 +225,7 @@ t-ndb_passwd:
 	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCPASSWD)" ndb_getpwuid_r $(TESTUID)
 	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getpwuid_r -4711
 
-t-ndb_group:
+t-ndb_group: nsstest $(DBDIR)/group.byname.db $(DBDIR)/group.bygid.db
 	@echo "";echo "--- Starting 'group' tests directly against NDB for group $(TESTGROUP) and gid $(TESTGID)";echo ""
 	$(TESTCMD) $(TESTOPTS) -C"$(TCGROUP)" ndb_getgrnam_r $(TESTGROUP)
 	$(TESTCMD) $(TESTOPTS) -x ndb_getgrnam_r no-such-group
@@ -226,7 +240,7 @@ t-ndb_group:
 	$(TESTCMD) $(TESTOPTS) -P10 -s -C"$(TCGROUP)" ndb_getgrgid_r $(TESTGID)
 	$(TESTCMD) $(TESTOPTS) -P10 -s -x ndb_getgrgid_r -4711
 
-t-passwd: $(NSSTEST)
+t-passwd: nsstest $(DBDIR)/passwd.byuid.db $(DBDIR)/passwd.byname.db
 	@echo "";echo "--- Starting 'passwd' tests via NSS for user $(TESTUSER) and uid $(TESTUID)";echo ""
 	$(TESTCMD) $(TESTOPTS) -C"$(TCPASSWD)" getpwnam $(TESTUSER)
 	$(TESTCMD) $(TESTOPTS) -x getpwnam no-such-user
@@ -254,7 +268,7 @@ t-passwd: $(NSSTEST)
 	$(TESTCMD) $(TESTOPTS) -P10 getpwent_r
 	$(TESTCMD) $(TESTOPTS) -P10 -s getpwent_r
 
-t-group: $(NSSTEST)
+t-group: nsstest $(DBDIR)/group.byname.db $(DBDIR)/group.bygid.db
 	@echo "";echo "--- Starting 'group' tests via NSS for group $(TESTGROUP) and gid $(TESTGID)";echo ""
 	$(TESTCMD) $(TESTOPTS) -C"$(TCGROUP)" getgrnam $(TESTGROUP)
 	$(TESTCMD) $(TESTOPTS) -x getgrnam no-such-group
@@ -282,7 +296,7 @@ t-group: $(NSSTEST)
 	$(TESTCMD) $(TESTOPTS) -P10 getgrent_r
 	$(TESTCMD) $(TESTOPTS) -P10 -s getgrent_r
 
-t-other: $(NSSTEST)
+t-grouplist: nsstest $(DBDIR)/group.byuser.db
 	@echo "";echo "--- Starting 'grouplist' tests via NSS for user $(TESTUSER)";echo ""
 	$(TESTCMD) $(TESTOPTS) -v -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
 	$(TESTCMD) $(TESTOPTS) -v -C"no-such-user:-1" getgrouplist no-such-user
