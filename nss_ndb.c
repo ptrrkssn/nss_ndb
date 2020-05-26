@@ -59,13 +59,14 @@ static __thread NDB ndb_grp_byname;
 static __thread NDB ndb_grp_bygid;
 static __thread NDB ndb_grp_byuser;
 
-#define NSS_NDB_STRIP_NONE      0x00
+#define NSS_NDB_STRIP_NONE      -1
+#define NSS_NDB_STRIP_NOT_SET   0
 #define NSS_NDB_STRIP_WORKGROUP 0x01
 #define NSS_NDB_STRIP_REALM     0x02
 #define NSS_NDB_STRIP_ALL       (NSS_NDB_STRIP_WORKGROUP|NSS_NDB_STRIP_REALM)
 
 #ifndef NSS_NDB_STRIP_DEFAULT
-#define NSS_NDB_STRIP_DEFAULT NSS_NDB_STRIP_NONE
+#define NSS_NDB_STRIP_DEFAULT NSS_NDB_STRIP_NOT_SET
 #endif
 
 static __thread int f_strip_names = NSS_NDB_STRIP_DEFAULT;
