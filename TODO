@@ -5,3 +5,5 @@
 5. Update documentation:
    a) Update man pages
    b) Create man page for nsstest
+6. How to handle WORKGROUP\user notation?
+7. How to handle user@REALM notation?
