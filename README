@@ -139,3 +139,17 @@ group.byuser (user:uid:gid,gid,gid,...\0):
     peter86
   Data:
     peter86:1003258,100,101,102^@
+
+
+ENVIRONMENT VARIABLES
+
+  NSS_NDB_STRIP_NAMES
+    If set, controls if "workgroup" (WORKGROUP\user) and/or Kerberos "realm" (user@realm) parts
+    of user names and groups are stripped before matching users in the NDB database
+
+    Valid values:
+      yes | both   Removes both parts
+      workgroup	   Removes the workgroup part
+      realm	   Removes the realm part
+      workgroup=WG Removes the workgroup part for specific workgroups only
+      realm=RN     Removes the realm part for specific realms only

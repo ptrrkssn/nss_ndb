@@ -59,6 +59,19 @@ static __thread NDB ndb_grp_byname;
 static __thread NDB ndb_grp_bygid;
 static __thread NDB ndb_grp_byuser;
 
+#define NSS_NDB_STRIP_NONE      0x00
+#define NSS_NDB_STRIP_WORKGROUP 0x01
+#define NSS_NDB_STRIP_REALM     0x02
+#define NSS_NDB_STRIP_ALL       (NSS_NDB_STRIP_WORKGROUP|NSS_NDB_STRIP_REALM)
+
+#ifndef NSS_NDB_STRIP_DEFAULT
+#define NSS_NDB_STRIP_DEFAULT NSS_NDB_STRIP_NONE
+#endif
+
+static __thread int f_strip_names = NSS_NDB_STRIP_DEFAULT;
+static __thread char *f_strip_workgroup = NULL;
+static __thread char *f_strip_realm = NULL;
+
 
 static void *
 balloc(size_t size,
@@ -645,13 +658,58 @@ nss_ndb_getpwnam_r(void *rv,
   char *buf            = va_arg(ap, char *);
   size_t bsize         = va_arg(ap, size_t);         
   int *res             = va_arg(ap, int *);
+  char *cp;
+  char *nbuf = NULL;
+  int rc;
 
+
+  if (!f_strip_names) {
+    cp = getenv("NSS_NDB_STRIP_NAMES");
+    if (cp) {
+      if (strcmp(cp, "yes") == 0 || strcmp(cp, "both") == 0)
+	f_strip_names = NSS_NDB_STRIP_ALL;
+      else if (strcmp(cp, "workgroup") == 0)
+	f_strip_names = NSS_NDB_STRIP_WORKGROUP;
+      else if (strncmp(cp, "workgroup=", 10) == 0) {
+	f_strip_names = NSS_NDB_STRIP_WORKGROUP;
+	f_strip_workgroup = strdup(cp+10);
+      } else if (strcmp(cp, "realm") == 0)
+	f_strip_names = NSS_NDB_STRIP_REALM;
+      else if (strncmp(cp, "realm=", 6) == 0) {
+	f_strip_names = NSS_NDB_STRIP_REALM;
+	f_strip_realm = strdup(cp+6);
+      } else
+	f_strip_names = -1;
+    } else
+      f_strip_names = -1;
+  }
   
-  return _ndb_getkey_r(&ndb_pwd_byname,
-		      path_passwd_byname,
-		      (STR2OBJ) str2passwd,
-		      rv, mdata,
-		      name, pbuf, buf, bsize, res);
+  if (f_strip_names > 0) {
+    if (f_strip_names & NSS_NDB_STRIP_WORKGROUP)  {
+      /* Strip AD workgroup if specified */
+      cp = strchr(name, '\\');
+      if (cp && (!f_strip_workgroup || strncmp(name, f_strip_workgroup, cp-name) == 0))
+	name = cp+1;
+    }
+    
+    if (f_strip_names & NSS_NDB_STRIP_REALM) {
+      /* Strip Kerberos realm if specified */
+      cp = strrchr(name, '@');
+      if (cp && (!f_strip_realm || strcmp(cp+1, f_strip_realm) == 0))
+	name = nbuf = strndup(name, cp-name);
+    }
+  }
+  
+  rc = _ndb_getkey_r(&ndb_pwd_byname,
+		     path_passwd_byname,
+		     (STR2OBJ) str2passwd,
+		     rv, mdata,
+		     name, pbuf, buf, bsize, res);
+
+  if (nbuf)
+    free(nbuf);
+  
+  return rc;
 }
 
 
@@ -730,12 +788,52 @@ nss_ndb_getgrnam_r(void *rv,
   char *buf           = va_arg(ap, char *);
   size_t bsize        = va_arg(ap, size_t);         
   int *res            = va_arg(ap, int *);
+  char *cp;
+  char *nbuf = NULL;
+  int rc;
+
+
+  if (!f_strip_names) {
+    cp = getenv("NSS_NDB_STRIP_NAMES");
+    if (cp) {
+      if (strcasecmp(cp, "yes") == 0 || strcasecmp(cp, "both") == 0)
+	f_strip_names = NSS_NDB_STRIP_ALL;
+      else if (strcasecmp(cp, "workgroup") == 0)
+	f_strip_names = NSS_NDB_STRIP_WORKGROUP;
+      else if (strcasecmp(cp, "realm") == 0)
+	f_strip_names = NSS_NDB_STRIP_REALM;
+      else
+	f_strip_names = -1;
+    } else
+      f_strip_names = -1;
+  }
   
-  return _ndb_getkey_r(&ndb_grp_byname,
+  if (f_strip_names > 0) {
+    if (f_strip_names & NSS_NDB_STRIP_WORKGROUP)  {
+      /* Strip AD workgroup if specified */
+      cp = strchr(name, '\\');
+      if (cp && (!f_strip_workgroup || strncmp(name, f_strip_workgroup, cp-name) == 0))
+	name = cp+1;
+    }
+    
+    if (f_strip_names & NSS_NDB_STRIP_REALM) {
+      /* Strip Kerberos realm if specified */
+      cp = strrchr(name, '@');
+      if (cp && (!f_strip_realm || strcmp(cp+1, f_strip_realm) == 0))
+	name = nbuf = strndup(name, cp-name);
+    }
+  }
+  
+  rc = _ndb_getkey_r(&ndb_grp_byname,
 		      path_group_byname,
 		      (STR2OBJ) str2group,
 		      rv, mdata,
 		      name, gbuf, buf, bsize, res);
+
+  if (nbuf)
+    free(nbuf);
+  
+  return rc;
 }
 
 
@@ -850,6 +948,11 @@ nss_ndb_getgroupmembership(void *res,
 
   if (name == NULL)
     return NS_NOTFOUND;
+  
+  /* Skip AD workgroup if specified */
+  cp = strchr(name, '\\');
+  if (cp)
+    name = cp+1;
   
   if (_ndb_open(&ndb_grp_byuser, path_usergroups_byname, 0) < 0) {
     /* Fall back to looping over all entries via getgrent_r() - slooooow */
