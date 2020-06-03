@@ -53,6 +53,10 @@
 
 #define MAXGRFIELDS 5
 
+#ifndef PATH_NSS_NDB_CONF
+#define PATH_NSS_NDB_CONF "/etc/nss_ndb.conf"
+#endif
+
 #ifndef PATH_NSS_NDB
 #define PATH_NSS_NDB "/var/db/nss_ndb"
 #endif

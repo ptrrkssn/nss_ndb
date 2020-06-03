@@ -50,7 +50,7 @@ DEBUG=""
 
 #### Default version, uses the old libc-builtin BerkeleyDB version
 
-VERSION=1.0.19
+VERSION=1.0.20
 INCARGS=
 LIBARGS=
 

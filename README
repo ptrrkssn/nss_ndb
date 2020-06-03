@@ -1,7 +1,7 @@
 Title:	 nss_ndb
-Version: 1.0.19
+Version: 1.0.20
 Author:  Peter Eriksson <pen@lysator.liu.se>
-Date:    2020-05-27
+Date:    2020-06-04
 
 
 DESCRIPTION
@@ -141,15 +141,29 @@ group.byuser (user:uid:gid,gid,gid,...\0):
     peter86:1003258,100,101,102^@
 
 
+CONFIG FILE
+
+  /etc/nss_ndb.conf
+  
+    A simple config file like this:
+
+      # A config file for nss_ndb.conf
+      workgroup AD
+      realm our.realm.com
+      debug 3
+      
+    If 'workgroup or 'realm' controls if "workgroup" (WORKGROUP\user) and/or Kerberos "realm"
+    (user@realm) parts of user names and groups are stripped before matching users in the NDB database.
+    If either is set to '*' then any workgroup or realm is stripped.
+
+
 ENVIRONMENT VARIABLES
 
-  NSS_NDB_STRIP_NAMES
-    If set, controls if "workgroup" (WORKGROUP\user) and/or Kerberos "realm" (user@realm) parts
-    of user names and groups are stripped before matching users in the NDB database
+  NSS_NDB_CONFIG
 
-    Valid values:
-      yes | both   Removes both parts
-      workgroup	   Removes the workgroup part
-      realm	   Removes the realm part
-      workgroup=WG Removes the workgroup part for specific workgroups only
-      realm=RN     Removes the realm part for specific realms only
+    Value is a comma separated list of:
+    
+      workgroup:WORKGROUP   Removes the workgroup part for specific workgroups only
+      realm:REALM           Removes the realm part for specific realms only
+      debug:LEVEL	    Sets the debug level
+
