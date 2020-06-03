@@ -66,10 +66,10 @@ static __thread NDB ndb_grp_byuser;
 #define NSS_NDB_STRIP_ALL       (NSS_NDB_STRIP_WORKGROUP|NSS_NDB_STRIP_REALM)
 
 #ifndef NSS_NDB_STRIP_DEFAULT
-#define NSS_NDB_STRIP_DEFAULT NSS_NDB_STRIP_NOT_SET
+#define NSS_NDB_STRIP_DEFAULT NSS_NDB_STRIP_ALL
 #endif
 
-static __thread int f_strip_names = NSS_NDB_STRIP_DEFAULT;
+static __thread int f_strip_names = NSS_NDB_STRIP_NOT_SET;
 static __thread char *f_strip_workgroup = NULL;
 static __thread char *f_strip_realm = NULL;
 
@@ -682,7 +682,7 @@ nss_ndb_getpwnam_r(void *rv,
       } else
 	f_strip_names = -1;
     } else
-      f_strip_names = -1;
+      f_strip_names = NSS_NDB_STRIP_DEFAULT;
   }
   
   if (f_strip_names > 0) {
