@@ -164,9 +164,14 @@ s_grplist(char *buf,
 
   if (!gidv)
     return -1;
-  
+
+#if 1
+  buf[0] = '\0';
+  p = 0;
+#else
   snprintf(buf, bufsize, "%s:", user);
   p = strlen(buf);
+#endif
 
   (void) qsort(gidv, ngv, sizeof(gidv[0]), &cmp_gid);
   
@@ -332,8 +337,10 @@ t_getpwnam(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -394,10 +401,10 @@ t_getpwnam_r(int argc,
 	exit(1);
       }
 
-#if 0
-      if (f_verbose)
-	puts(sbuf);
-#endif
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -489,8 +496,10 @@ t_ndb_getpwnam_r(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -560,8 +569,10 @@ t_ndb_getpwuid_r(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -625,8 +636,10 @@ t_ndb_getgrnam_r(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -696,9 +709,11 @@ t_ndb_getgrgid_r(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
-      
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
+
       trc = 0;
     }
 
@@ -764,8 +779,10 @@ t_getpwuid(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -828,8 +845,10 @@ t_getpwuid_r(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -873,8 +892,10 @@ t_getpwent(int argc,
       exit(1);
     }
     
-    if (f_verbose)
-      puts(sbuf);
+    if (f_verbose > 1) {
+      printf("Returned data:\n  %s\n", sbuf);
+      --f_verbose;
+    }
   }
 
   if (errno) {
@@ -921,8 +942,10 @@ t_getpwent_r(int argc,
       exit(1);
     }
     
-    if (f_verbose)
-      puts(sbuf);
+    if (f_verbose > 1) {
+      printf("Returned data:\n  %s\n", sbuf);
+      --f_verbose;
+    }
   }
   
   if (ec) {
@@ -982,8 +1005,10 @@ t_getgrnam(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -1039,8 +1064,10 @@ t_getgrnam_r(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -1103,8 +1130,10 @@ t_getgrgid(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -1169,8 +1198,10 @@ t_getgrgid_r(int argc,
 	exit(1);
       }
       
-      if (f_verbose)
-	puts(sbuf);
+      if (f_verbose > 1) {
+	printf("Returned data:\n  %s\n", sbuf);
+	--f_verbose;
+      }
       
       trc = 0;
     }
@@ -1214,8 +1245,10 @@ t_getgrent(int argc,
       exit(1);
     }
     
-    if (f_verbose)
-      puts(sbuf);
+    if (f_verbose > 1) {
+      printf("Returned data:\n  %s\n", sbuf);
+      --f_verbose;
+    }
   }
 
   if (errno) {
@@ -1262,8 +1295,10 @@ t_getgrent_r(int argc,
       exit(1);
     }
     
-    if (f_verbose)
-      puts(sbuf);
+    if (f_verbose > 1) {
+      printf("Returned data:\n  %s\n", sbuf);
+      --f_verbose;
+    }
   }
   
   if (ec) {
@@ -1342,10 +1377,10 @@ t_getgrouplist(int argc,
       exit(1);
     }
 
-#if 0
-    if (f_verbose)
-      puts(sbuf);
-#endif
+    if (f_verbose > 1) {
+      printf("Returned data:\n  %s\n", sbuf);
+      --f_verbose;
+    }
   }
   
   return 0;

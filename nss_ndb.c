@@ -1045,15 +1045,11 @@ nss_ndb_getgroupmembership(void *res,
   DBT key, val;
   int rc;
   char *members, *cp;
+  char *nbuf = NULL;
   
 
   if (name == NULL)
     return NS_NOTFOUND;
-  
-  /* Skip AD workgroup if specified */
-  cp = strchr(name, '\\');
-  if (cp)
-    name = cp+1;
   
   if (_ndb_open(&ndb_grp_byuser, path_usergroups_byname, 0) < 0) {
     /* Fall back to looping over all entries via getgrent_r() - slooooow */
@@ -1062,6 +1058,30 @@ nss_ndb_getgroupmembership(void *res,
 
   /* Add primary gid to groupv[] */
   (void) gr_addgid(pgid, groupv, maxgrp, groupc);
+  
+
+  _nss_ndb_init();
+  
+  if (f_strip_workgroup) {
+    size_t len;
+    
+    /* Strip AD workgroup prefix if specified */
+    cp = strchr(name, '\\');
+    if (cp && (f_strip_workgroup[0] == '\0' || /* Accept all workgroups */
+	       cp-name == 0 || /* Empty workgroup specified (\user) */
+	       ((len = strlen(f_strip_workgroup)) == cp-name && 
+		strncasecmp(name, f_strip_workgroup, len) == 0))) /* Exact match */
+      name = cp+1;
+  }
+  
+  if (f_strip_realm) {
+    /* Strip Kerberos realm suffix if specified */
+    cp = strrchr(name, '@');
+    if (cp && (f_strip_realm[0] == '\0' ||        /* Accept all realms */
+	       strcasecmp(cp+1, f_strip_realm) == 0)) /* Exact match */
+      name = nbuf = strndup(name, cp-name);
+  }
+
   
   memset(&key, 0, sizeof(key));
   memset(&val, 0, sizeof(val));
@@ -1075,16 +1095,22 @@ nss_ndb_getgroupmembership(void *res,
   rc = _ndb_get(&ndb_grp_byuser, &key, &val, 0);
   if (rc < 0) {
     _ndb_close(&ndb_grp_byuser);
+    if (nbuf)
+      free(nbuf);
     return NS_UNAVAIL;
   }
   else if (rc > 0) {
     _ndb_close(&ndb_grp_byuser);
+    if (nbuf)
+      free(nbuf);
     return NS_NOTFOUND;
   }
 
   /* Should not happen */
   if (val.data == NULL) {
     _ndb_close(&ndb_grp_byuser);
+    if (nbuf)
+      free(nbuf);
     return NS_UNAVAIL;
   }
 
@@ -1103,6 +1129,9 @@ nss_ndb_getgroupmembership(void *res,
 
   _ndb_close(&ndb_grp_byuser);
   
+  if (nbuf)
+    free(nbuf);
+	
   /* Let following nsswitch backend(s) add more groups(?) */
   return NS_NOTFOUND;
 }

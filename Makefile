@@ -133,7 +133,8 @@ TCPASSWD=`getent passwd \`id -un $(TESTUSER)\``
 TCGROUP=`getent group \`id -gn $(TESTUSER)\``
 
 #TCGRPLIST=tesje148:100000000
-TCGRPLIST=$(TESTUSER):`id -G $(TESTUSER) | tr ' ' '\n' | sort -n | tr '\n' ',' | sed -e 's/,$$//'`
+TCGRPLIST=`id -G $(TESTUSER) | tr ' ' '\n' | sort -n | tr '\n' ',' | sed -e 's/,$$//'`
+#`echo $(TESTUSER) | sed -e 's/^.*\\\//' -e 's/@.*$$//'`:
 
 BINS=makendb nsstest
 
@@ -346,10 +347,10 @@ t-group: nsstest $(DBDIR)/group.byname.db $(DBDIR)/group.bygid.db
 t-grouplist: nsstest $(DBDIR)/group.byuser.db
 	@echo "";echo "--- Starting 'grouplist' tests via NSS for user $(TESTUSER)";echo ""
 	$(TESTCMD) $(TESTOPTS) -v -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
-	$(TESTCMD) $(TESTOPTS) -v -C"no-such-user:-1" getgrouplist no-such-user
+	$(TESTCMD) $(TESTOPTS) -v -C"-1" getgrouplist no-such-user
 	$(TESTCMD) $(TESTOPTS) -v -s -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
-	$(TESTCMD) $(TESTOPTS) -v -s -C"no-such-user:-1" getgrouplist no-such-user
+	$(TESTCMD) $(TESTOPTS) -v -s -C"-1" getgrouplist no-such-user
 	$(TESTCMD) $(TESTOPTS) -v -P10 -C"$(TCGRPLIST)" getgrouplist $(TESTUSER)
-	$(TESTCMD) $(TESTOPTS) -v -P10 -C"no-such-user:-1" getgrouplist no-such-user
+	$(TESTCMD) $(TESTOPTS) -v -P10 -C"-1" getgrouplist no-such-user
 # "-x" doesn't yield the expected result here - it is NOT an error to call getgrouplist() with an
 # unknown user, it just returns the "basegid" specified (which we set to -1 in our test here).
