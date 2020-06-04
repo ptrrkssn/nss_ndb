@@ -160,15 +160,22 @@ add_user_group(NDB *db,
       
     } else if (rc == 1) {
       /* New record - create*/
-
+      char buf[256];
+      int rc;
+      
+      
       if (debug_f)
 	fprintf(stderr, "*** add_user_group: %s: New Record\n", cp);
       
-      char *buf = malloc(128);
-      if (!buf)
+      rc = snprintf(buf, sizeof(buf), "%s:%s", cp, gid);
+      if (rc < 0) {
+	fprintf(stderr, "*** add_user_group: snprintf(): %s\n", strerror(errno));
 	return -1;
-
-      snprintf(buf, 128, "%s:%s", cp, gid);
+      }
+      if (rc >= sizeof(buf)) {
+	fprintf(stderr, "*** add_user_group: snprintf(): buf too small\n");
+	return -1;
+      }
       
       memset(&val, 0, sizeof(val));
       val.data = buf;
@@ -182,7 +189,6 @@ add_user_group(NDB *db,
 	return -1;
       }
       
-      free(buf);
     }
   }
 
