@@ -62,31 +62,41 @@ static __thread NDB ndb_grp_byuser;
 
 
 static __thread int f_nss_ndb_init  = 0;
+#if ENABLE_CONFIG_FILE || ENABLE_CONFIG_VAR
 static __thread int f_nss_ndb_debug = 0;
+#endif
 
-#define NSS_NDB_STRIP_ALL "*"
-static __thread const char *f_strip_workgroup = NULL;
-static __thread const char *f_strip_realm     = NULL;
+#ifndef DEFAULT_WORKGROUP
+#define DEFAULT_WORKGROUP NULL
+#endif
+#ifndef DEFAULT_REALM
+#define DEFAULT_REALM NULL
+#endif
+
+static __thread const char *f_strip_workgroup = DEFAULT_WORKGROUP;
+static __thread const char *f_strip_realm     = DEFAULT_REALM;
 
 
-static void _nss_ndb_init(void) {
-  char *cp, *bp;
+static void
+_nss_ndb_init(void) {
+#if ENABLE_CONFIG_FILE
   FILE *fp;
-
-
+#endif
+#if ENABLE_CONFIG_VAR
+  char *bp;
+#endif
+  
   if (f_nss_ndb_init)
     return;
   f_nss_ndb_init = 1;
 
-
+#if ENABLE_CONFIG_FILE
   if ((fp = fopen(PATH_NSS_NDB_CONF, "r")) != NULL) {
-    
     char buf[256];
     int line = 0;
     
     while (fgets(buf, sizeof(buf), fp)) {
-      char *bp = buf;
-      char *vp;
+      char *cp, *vp, *bp = buf;
       
       ++line;
       
@@ -98,31 +108,28 @@ static void _nss_ndb_init(void) {
       
       if (strcmp(cp, "workgroup") == 0) {
 	
-	if (f_strip_workgroup && f_strip_workgroup != NSS_NDB_STRIP_ALL) {
+	if (f_strip_workgroup) {
 	  free((void *) f_strip_workgroup);
 	  f_strip_workgroup = NULL;
 	}
 	
 	if (vp) {
 	  if (strcmp(vp, "*") == 0)
-	    f_strip_workgroup = NSS_NDB_STRIP_ALL;
-	  else {
-	    f_strip_workgroup = strdup(vp);
-	  }
+	    vp = "";
+	  f_strip_workgroup = strdup(vp);
 	}
 	
       } else if (strcmp(cp, "realm") == 0) {
 	
-	if (f_strip_realm && f_strip_realm != NSS_NDB_STRIP_ALL) {
+	if (f_strip_realm) {
 	  free((void *) f_strip_realm);
 	  f_strip_realm = NULL;
 	}
 	
 	if (vp) {
 	  if (strcmp(vp, "*") == 0)
-	    f_strip_realm = NSS_NDB_STRIP_ALL;
-	  else
-	    f_strip_realm = strdup(vp);
+	    vp = "";
+	  f_strip_realm = strdup(vp);
 	} 
 	
       } else if (strcmp(cp, "debug") == 0) {
@@ -134,8 +141,12 @@ static void _nss_ndb_init(void) {
     }
     fclose(fp);
   }
-
+#endif
+  
+#if ENABLE_CONFIG_VAR
   if ((bp = getenv("NSS_NDB_CONFIG")) != NULL) {
+    char *cp;
+    
     while ((cp = strsep(&bp, ",")) != NULL) {
       char *vp;
       
@@ -148,30 +159,28 @@ static void _nss_ndb_init(void) {
 
       if (strcmp(cp, "workgroup") == 0) {
 
-	if (f_strip_workgroup && f_strip_workgroup != NSS_NDB_STRIP_ALL) {
+	if (f_strip_workgroup) {
 	  free((void *) f_strip_workgroup);
 	  f_strip_workgroup = NULL;
 	}
 	
 	if (vp) {
 	  if (strcmp(vp, "*") == 0)
-	    f_strip_workgroup = NSS_NDB_STRIP_ALL;
-	  else
-	    f_strip_workgroup = strdup(vp);
+	    vp = "";
+	  f_strip_workgroup = strdup(vp);
 	}
 	
       } else if (strcmp(cp, "realm") == 0) {
 	
-	if (f_strip_realm && f_strip_realm != NSS_NDB_STRIP_ALL) {
+	if (f_strip_realm) {
 	  free((void *) f_strip_realm);
 	  f_strip_realm = NULL;
 	}
 
 	if (vp) {
 	  if (strcmp(vp, "*") == 0)
-	    f_strip_realm = NSS_NDB_STRIP_ALL;
-	  else
-	    f_strip_realm = strdup(vp);
+	    vp = "";
+	  f_strip_realm = strdup(vp);
 	}
 	
       } else if (strcmp(cp, "debug") == 0) {
@@ -184,7 +193,7 @@ static void _nss_ndb_init(void) {
       }
     }
   }
-    
+#endif    
 }
 
 
@@ -786,18 +795,18 @@ nss_ndb_getpwnam_r(void *rv,
     
     /* Strip AD workgroup prefix if specified */
     cp = strchr(name, '\\');
-    if (cp && (f_strip_workgroup == NSS_NDB_STRIP_ALL || /* Accept all workgroups */
+    if (cp && (f_strip_workgroup[0] == '\0' || /* Accept all workgroups */
 	       cp-name == 0 || /* Empty workgroup specified (\user) */
 	       ((len = strlen(f_strip_workgroup)) == cp-name && 
-		strncmp(name, f_strip_workgroup, len) == 0))) /* Exact match */
+		strncasecmp(name, f_strip_workgroup, len) == 0))) /* Exact match */
       name = cp+1;
   }
   
   if (f_strip_realm) {
     /* Strip Kerberos realm suffix if specified */
     cp = strrchr(name, '@');
-    if (cp && (f_strip_realm == NSS_NDB_STRIP_ALL ||
-	       strcmp(cp+1, f_strip_realm) == 0))
+    if (cp && (f_strip_realm[0] == '\0' ||        /* Accept all realms */
+	       strcasecmp(cp+1, f_strip_realm) == 0)) /* Exact match */
       name = nbuf = strndup(name, cp-name);
   }
   
@@ -901,18 +910,18 @@ nss_ndb_getgrnam_r(void *rv,
     
     /* Strip AD workgroup prefix if specified */
     cp = strchr(name, '\\');
-    if (cp && (f_strip_workgroup == NSS_NDB_STRIP_ALL || /* Accept all workgroups */
-	       cp-name == 0 || /* Empty workgroup specified (\user) */
+    if (cp && (f_strip_workgroup[0] == '\0' || /* Accept all workgroups */
+	       cp-name == 0 ||                 /* Empty specified workgroup */
 	       ((len = strlen(f_strip_workgroup)) == cp-name && 
-		strncmp(name, f_strip_workgroup, len) == 0))) /* Exact match */
+		strncasecmp(name, f_strip_workgroup, len) == 0))) /* Exact match */
       name = cp+1;
   }
   
   if (f_strip_realm) {
     /* Strip realm suffix if specified */
     cp = strrchr(name, '@');
-    if (cp && (f_strip_realm == NSS_NDB_STRIP_ALL ||
-	       strcmp(cp+1, f_strip_realm) == 0))
+    if (cp && (f_strip_realm[0] == '\0' ||        /* Accept all realms */
+	       strcasecmp(cp+1, f_strip_realm) == 0)) /* Exact match */
       name = nbuf = strndup(name, cp-name);
   }
   

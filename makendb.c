@@ -321,6 +321,8 @@ main(int argc,
     return 0;
   }
 
+  p_id = p_name = p_user = NULL;
+    
   if (type == NULL) {
 
     sprintf(path, "%s", argv[i]);

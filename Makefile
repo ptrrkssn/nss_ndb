@@ -24,63 +24,90 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# Some 'make' variants does not include CPPFLAGS when compiling, some do
+.c.o:
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+
 # Our package name
-PACKAGE=nss_ndb
+PACKAGE =	nss_ndb
 
-# Where most of the stuff is installed
-PREFIX=/usr/local
+# Map "WORKGROUP\name" (and empty workgroup - "\name") -> "name" for get*nam*()
+WORKGROUP =	AD
 
-# The library where nsswitch looks for modules
-NSSLIBDIR=/usr/lib
+# Map "name@REALM" -> "name" for get*nam*()
+#REALM = 	lysator.liu.se
+
+# Where most of the stuff is installed.
+# For a production system you probably want PREFIX=/usr
+PREFIX =	/usr/local
 
 # Where we keep the database
-DBDIR=/var/db/nss_ndb
+DBDIR =		/var/db/nss_ndb
 
+# The library where nsswitch looks for modules
+NSSLIBDIR =	/usr/lib
+
+# Where to look for the configuration file
+# For a production system you probably want ETCDIR=/etc
+ETCDIR =	$(PREFIX)/etc
+
+# Where to install the shared libraries
 # For a production system you probably want LIBDIR=$(NSSLIBDIR)
-LIBDIR=$(PREFIX)/lib
+LIBDIR =	$(PREFIX)/lib
 
-BINDIR=$(PREFIX)/bin
-SBINDIR=$(PREFIX)/sbin
-MANDIR=$(PREFIX)/share/man
+# Paths for binaries and manual pages
+BINDIR =	$(PREFIX)/bin
+SBINDIR =	$(PREFIX)/sbin
+MANDIR =	$(PREFIX)/share/man
 
+# Force workgroup and/or realm
+#CPPFLAGS +=	-DDEFAULT_WORKGROUP="\"$(WORKGROUP)\""
+#CPPFLAGS +=	-DDEFAULT_REALM="\"$(REALM)\""
 
-DEBUG=""
-#DEBUG="-DDEBUG=2"
+# Configuration file path (add comment to disable)
+CPPFLAGS +=	-DPATH_NSS_NDB_CONF="\"$(ETCDIR)/nss_ndb.conf\""
+CPPFLAGS +=	-DENABLE_CONFIG_FILE=1
+
+# Configuration environment variable name (add comment to disable)
+#CPPFLAGS +=	-DCONFVAR="\"NSS_NDB_CONFIG\""
+#CPPFLAGS +=	-DENABLE_CONFIG_VAR=1
+
+# Force debugging
+#CPPFLAGS +=	-DDEBUG=2
+
 
 
 #### Default version, uses the old libc-builtin BerkeleyDB version
 
-VERSION=1.0.20
-INCARGS=
-LIBARGS=
+VERSION =	1.0.20
 
 
 ### BerkeleyDB 4 - uses the "db48" package
 
-#VERSION=1.4
-#INCARGS=-I/usr/local/include/db48
-#LIBARGS=-L/usr/local/lib/db48 -ldb
+#VERSION =	1.4
+#CPPFLAGs +=	-I/usr/local/include/db48
+#LDFLAGS +=	-L/usr/local/lib/db48 -ldb
 
 
 ### BerkeleyDB 5 - uses the "db5" package
 
-#VERSION=1.5
-#INCARGS=-I/usr/local/include/db5
-#LIBARGS=-L/usr/local/lib/db5 -ldb
+#VERSION =	1.5
+#CPPFLAGS +=	-I/usr/local/include/db5
+#LDFLAGS +=	-L/usr/local/lib/db5 -ldb
 
 
 ### BerkeleyDB 6 - uses the "db6" package
 
-#VERSION=1.6
-#INCARGS=-I/usr/local/include/db6
-#LIBARGS=-L/usr/local/lib/db6 -ldb
+#VERSION =	1.6
+#CPPFLAGS +=	-I/usr/local/include/db6
+#LDFLAGS +=	-L/usr/local/lib/db6 -ldb
 
 
-CPPFLAGS=-DVERSION="\"$(VERSION)\"" $(INCARGS) 
+CPPFLAGS+=-DVERSION="\"$(VERSION)\""
+CPPFLAGS+=-DPATH_NSS_NDB='"$(DBDIR)"'
 
-CFLAGS=-pthread -fPIC -O -g -Wall -DVERSION="\"$(VERSION)\"" $(INCARGS) -DPATH_NSS_NDB='"$(DBDIR)"'
-
-LDFLAGS=$(LIBARGS) 
+CFLAGS=-pthread -fPIC -O2 -g -Wall
 
 LIB=nss_ndb.so.$(VERSION)
 LIBOBJS=nss_ndb.o
@@ -110,26 +137,35 @@ TCGRPLIST=$(TESTUSER):`id -G $(TESTUSER) | tr ' ' '\n' | sort -n | tr '\n' ',' |
 
 BINS=makendb nsstest
 
+
 all: $(LIB) $(BINS)
 
 $(LIB): $(LIBOBJS)
 	$(LD) $(LDFLAGS) --shared -o $(LIB) $(LIBOBJS)
 
-makendb.o: makendb.c ndb.h
-
-nsstest.o: nsstest.c ndb.h
-	$(CC) $(CFLAGS) -DWITH_NSS_NDB=1 -c nsstest.c
-
 makendb: makendb.o nss_ndb.o
 	$(CC) -g -o makendb makendb.o nss_ndb.o $(LIBARGS)
 
-clean:
-	-rm -f *~ \#* *.o *.core core
+nsstest:	nsstest.o nss_ndb.o
+	$(CC) -g -o nsstest nsstest.o nss_ndb.o -lpthread -ldl $(LIBARGS)
+
+
+makendb.o: makendb.c ndb.h nss_ndb.h Makefile
+
+nsstest.o: nsstest.c nss_ndb.h Makefile
+	$(CC) $(CFLAGS) -DWITH_NSS_NDB=1 -c nsstest.c
+
+nss_ndb.o: nss_ndb.c ndb.h nss_ndb.h Makefile
+
 
 distclean: clean
 	-rm -f *.so.* $(BINS)
 
-install: install-lib install-bin install-sbin install-db
+clean:
+	-rm -f *~ \#* *.o *.core core
+
+
+install: install-lib install-bin install-sbin install-db install-etc
 
 install-db:
 	mkdir -p $(DBDIR)
@@ -142,6 +178,20 @@ install-sbin: ndbsync
 
 install-man:
 	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(MANDIR)/man1
+
+install-etc: $(ETCDIR)/nss_ndb.conf
+
+$(ETCDIR)/nss_ndb.conf:
+	$(INSTALL) -o root -g wheel -m 0644 nss_ndb.conf $(ETCDIR)
+	if test "$(WORKGROUP)" != ""; then \
+	  sed -e 's/^#workgroup .*$$/workgroup $(WORKGROUP)/' <$(ETCDIR)/nss_ndb.conf >$(ETCDIR)/nss_ndb.conf.tmp && \
+	    mv $(ETCDIR)/nss_ndb.conf.tmp $(ETCDIR)/nss_ndb.conf; \
+	fi
+	if test "$(REALM)" != ""; then \
+	  sed -e 's/^#realm .*$$/realm $(REALM)/' <$(ETCDIR)/nss_ndb.conf >$(ETCDIR)/nss_ndb.conf.tmp && \
+	    mv $(ETCDIR)/nss_ndb.conf.tmp $(ETCDIR)/nss_ndb.conf; \
+	fi
+	chmod 644 $(ETCDIR)/nss_ndb.conf
 
 install-lib: $(LIB)
 	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(LIBDIR)
@@ -159,9 +209,6 @@ push:	distclean
 dist:	distclean
 	(cd ../dist && ln -sf ../$(PACKAGE) $(PACKAGE)-$(VERSION) && tar zcf $(PACKAGE)-$(VERSION).tar.gz $(PACKAGE)-$(VERSION)/* && rm $(PACKAGE)-$(VERSION))
 
-
-nsstest:	nsstest.o nss_ndb.o
-	$(CC) -g -o nsstest nsstest.o nss_ndb.o -lpthread -ldl $(LIBARGS)
 
 
 VALGRIND=valgrind --leak-check=full --error-exitcode=1

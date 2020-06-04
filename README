@@ -143,16 +143,16 @@ group.byuser (user:uid:gid,gid,gid,...\0):
 
 CONFIG FILE
 
-  /etc/nss_ndb.conf
+  nss_ndb.conf (in $(PREFIX)/etc - see Makefile)
   
     A simple config file like this:
 
       # A config file for nss_ndb.conf
+      debug 0
       workgroup AD
       realm our.realm.com
-      debug 3
       
-    If 'workgroup or 'realm' controls if "workgroup" (WORKGROUP\user) and/or Kerberos "realm"
+    'workgroup and 'realm' controls if "workgroup" (WORKGROUP\user) and/or Kerberos "realm"
     (user@realm) parts of user names and groups are stripped before matching users in the NDB database.
     If either is set to '*' then any workgroup or realm is stripped.
 
@@ -163,7 +163,7 @@ ENVIRONMENT VARIABLES
 
     Value is a comma separated list of:
     
+      debug:LEVEL	    Sets the debug level
       workgroup:WORKGROUP   Removes the workgroup part for specific workgroups only
       realm:REALM           Removes the realm part for specific realms only
-      debug:LEVEL	    Sets the debug level
 
