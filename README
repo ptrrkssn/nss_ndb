@@ -32,27 +32,34 @@ The source code for this project can be downloaded from:
 BUILD
 
 By default it will build and install the library and the binaries into
-/usr/local/{lib,bin,sbin} but you probably want it to install into
-/usr/{lib,bin,sbin} so it will be available early on during system boot
-in case /usr/local is on a filesystem not mounted directly.
+/usr/local/{etc,lib,bin,sbin} but you probably want it to install into
+/etc & /usr/{lib,bin,sbin} so it will be available early on during system
+boot in case /usr/local is on a filesystem not mounted directly.
 
 The "PREFIX" variable in the Makefile can be used to specify alternative
-installation locations (defaults to /usr/local)
+installation locations (defaults to /usr/local). "ETCDIR" specifies the
+location for the config file.
 
 The database should be kept in /var/db/nss_ndb, but can be relocated via
 the "DBDIR" variable in the Makefile
 
-To compile run:
+You can also enable stripping of "workgroup" (WORKGROUP\name) and "realm"
+(name@REALM) from names before lookup up data in the database. See the
+Makefile for details.
 
-  make PREFIX=/usr
+To compile & install into /usr/{bin,lib} & /etc use:
 
-To install into /usr/lib, /usr/bin & /usr/bin, use:
+  make PREFIX=/usr ETCDIR=/etc
 
-  make PREFIX=/usr install
+To compile & install into /usr/{bin,lib} & /etc use (but
+you might want to run the test suite first - se next section):
+
+  make PREFIX=/usr ETCDIR=/etc install
 
 In order to make "nsswitch" use the newly installed "nss_ndb.so.VERSION" run:
 
   make PREFIX=/usr install-nsslink
+
 
 
 TESTING
@@ -60,25 +67,24 @@ TESTING
 First make sure you have created the database files in /var/db/nss_ndb and
 populated them with data.
 
-Then run (replace 'some-user-in-the-ndb-database' first):
+Test before installation:
 
-  make TESTUSER=some-user-in-the-ndb-database check-ndb
+  make USER=some-user-in-the-ndb-database check-ndb
+
+
+Test the installed binaries (and everything via nsswitch.conf):
+
+  make USER=some-user-in-the-ndb-database check
+
+
+Test with 'valgrind' for memory leaks:
+
+  make USER=some-user-in-the-ndb-database check-valgrind
 
 This will use the "nsstest" tool and then run a number of validation tests on
-the code.
-
-
-MORE TESTING
-
-Make sure ndb is activated in /etc/nsswitch.conf then some more complete tests
-can be done via:
-
-  make TESTUSER=some-user check
-
-To run the same tests under the 'valgrind' memory leak/test tool do:
-
-  make TESTUSER=some-user valgrind
-
+the code. To check for memory allocation errors make sure you have the
+tool 'valgrind' installed. Beware that this takes a bit longer if you
+have a lot of data in the databases:
 
 
 USAGE
@@ -102,13 +108,13 @@ All done. You can dump the contents of the databases with:
   makendb -p path-to-database
   
 You can also use the perl script "ndbsync" to sync the NDB databases with data
-from an SQL database (mysql) if you would have such a data source.
+from an SQL database (mysql) - if you would have such a data source. 
 
 
 
 NDB DATABASE FORMAT
 
-All tables use UTF8.
+All tables use UTF-8.
 
 passwd.byname (user:password:uid:gid:class:change:expire:gecos:home:shell\0):
   Key:
@@ -141,9 +147,9 @@ group.byuser (user:uid:gid,gid,gid,...\0):
     peter86:1003258,100,101,102^@
 
 
-CONFIG FILE
+CONFIGURATION FILE
 
-  nss_ndb.conf (in $(PREFIX)/etc - see Makefile)
+  nss_ndb.conf (if enabled - in $(PREFIX)/etc - see Makefile)
   
     A simple config file like this:
 
@@ -154,16 +160,15 @@ CONFIG FILE
       
     'workgroup and 'realm' controls if "workgroup" (WORKGROUP\user) and/or Kerberos "realm"
     (user@realm) parts of user names and groups are stripped before matching users in the NDB database.
-    If either is set to '*' then any workgroup or realm is stripped.
+    If either is set to '*' then any workgroup or realm found is stripped.
 
 
-ENVIRONMENT VARIABLES
+ENVIRONMENT VARIABLE
 
-  NSS_NDB_CONFIG
+  NSS_NDB_CONFIG (if enabled at build time - se Makefile)
 
     Value is a comma separated list of:
     
       debug:LEVEL	    Sets the debug level
       workgroup:WORKGROUP   Removes the workgroup part for specific workgroups only
       realm:REALM           Removes the realm part for specific realms only
-

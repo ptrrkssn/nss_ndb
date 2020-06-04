@@ -62,15 +62,15 @@ SBINDIR =	$(PREFIX)/sbin
 MANDIR =	$(PREFIX)/share/man
 
 # Force workgroup and/or realm
-#CPPFLAGS +=	-DDEFAULT_WORKGROUP="\"$(WORKGROUP)\""
-#CPPFLAGS +=	-DDEFAULT_REALM="\"$(REALM)\""
+#CPPFLAGS +=	-DDEFAULT_WORKGROUP='"$(WORKGROUP)"'
+#CPPFLAGS +=	-DDEFAULT_REALM='"$(REALM)"'
 
 # Configuration file path (add comment to disable)
-CPPFLAGS +=	-DPATH_NSS_NDB_CONF="\"$(ETCDIR)/nss_ndb.conf\""
+CPPFLAGS +=	-DPATH_NSS_NDB_CONF='"$(ETCDIR)/nss_ndb.conf"'
 CPPFLAGS +=	-DENABLE_CONFIG_FILE=1
 
 # Configuration environment variable name (add comment to disable)
-#CPPFLAGS +=	-DCONFVAR="\"NSS_NDB_CONFIG\""
+#CPPFLAGS +=	-DCONFVAR='"NSS_NDB_CONFIG"'
 #CPPFLAGS +=	-DENABLE_CONFIG_VAR=1
 
 # Force debugging
@@ -104,7 +104,7 @@ VERSION =	1.0.20
 #LDFLAGS +=	-L/usr/local/lib/db6 -ldb
 
 
-CPPFLAGS+=-DVERSION="\"$(VERSION)\""
+CPPFLAGS+=-DVERSION='"$(VERSION)"'
 CPPFLAGS+=-DPATH_NSS_NDB='"$(DBDIR)"'
 
 CFLAGS=-pthread -fPIC -O2 -g -Wall
