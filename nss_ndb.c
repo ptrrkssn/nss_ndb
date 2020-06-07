@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <fcntl.h>
@@ -60,9 +62,8 @@ static __thread NDB ndb_grp_bygid;
 static __thread NDB ndb_grp_byuser;
 
 
-
 static __thread int f_nss_ndb_init  = 0;
-#if ENABLE_CONFIG_FILE || ENABLE_CONFIG_VAR
+#ifdef NDB_DEBUG
 static __thread int f_nss_ndb_debug = 0;
 #endif
 
@@ -76,13 +77,12 @@ static __thread int f_nss_ndb_debug = 0;
 static __thread const char *f_strip_workgroup = DEFAULT_WORKGROUP;
 static __thread const char *f_strip_realm     = DEFAULT_REALM;
 
-
 static void
 _nss_ndb_init(void) {
-#if ENABLE_CONFIG_FILE
+#ifdef ENABLE_CONFIG_FILE
   FILE *fp;
 #endif
-#if ENABLE_CONFIG_VAR
+#ifdef NSS_NDB_CONF_VAR
   char *bp;
 #endif
   
@@ -90,8 +90,8 @@ _nss_ndb_init(void) {
     return;
   f_nss_ndb_init = 1;
 
-#if ENABLE_CONFIG_FILE
-  if ((fp = fopen(PATH_NSS_NDB_CONF, "r")) != NULL) {
+#ifdef ENABLE_CONFIG_FILE
+  if ((fp = fopen(NSS_NDB_CONF_PATH, "r")) != NULL) {
     char buf[256];
     int line = 0;
     
@@ -131,20 +131,21 @@ _nss_ndb_init(void) {
 	    vp = "";
 	  f_strip_realm = strdup(vp);
 	} 
-	
+#ifdef NDB_DEBUG	
       } else if (strcmp(cp, "debug") == 0) {
 	if (vp)
 	  sscanf(vp, "%d", &f_nss_ndb_debug);
 	else
 	  f_nss_ndb_debug = 1;
+#endif
       }
     }
     fclose(fp);
   }
 #endif
   
-#if ENABLE_CONFIG_VAR
-  if ((bp = getenv("NSS_NDB_CONFIG")) != NULL) {
+#ifdef NSS_NDB_CONF_VAR
+  if ((bp = getenv(NSS_NDB_CONF_VAR)) != NULL) {
     char *cp;
     
     while ((cp = strsep(&bp, ",")) != NULL) {
@@ -153,10 +154,14 @@ _nss_ndb_init(void) {
       vp = strchr(cp, ':');
       if (vp)
 	*vp++ = '\0';
-      
-      if (f_nss_ndb_debug > 2)
-	fprintf(stderr, "*** nss_ndb_init: env(NSS_NDB_CONFIG): key = %s, val = %s\n", cp, vp ? vp : "NULL");
 
+#ifdef NDB_DEBUG
+      if (f_nss_ndb_debug > 2)
+	fprintf(stderr, "*** nss_ndb_init: getenv(\"%s\"): key = %s, val = %s\n",
+		NSS_NDB_CONF_VAR,
+		cp, vp ? vp : "NULL");
+#endif
+      
       if (strcmp(cp, "workgroup") == 0) {
 
 	if (f_strip_workgroup) {
@@ -183,13 +188,14 @@ _nss_ndb_init(void) {
 	  f_strip_realm = strdup(vp);
 	}
 	
+#ifdef NDB_DEBUG	
       } else if (strcmp(cp, "debug") == 0) {
 
 	if (vp)
 	  sscanf(vp, "%d", &f_nss_ndb_debug);
 	else
 	  f_nss_ndb_debug = 1;
-	
+#endif	
       }
     }
   }
@@ -525,8 +531,9 @@ _ndb_close(NDB *ndb) {
   if (!ndb)
     return;
 
-#if DEBUG
-  fprintf(stderr, "_ndb_close(%p) [%s])\n",
+#if NDB_DEBUG
+  if (f_nss_ndb_debug)
+    fprintf(stderr, "_ndb_close(%p) [%s])\n",
 	  ndb,
 	  ndb && ndb->path ? ndb->path : "<null>");
 #endif
@@ -562,8 +569,9 @@ _ndb_open(NDB *ndb,
 #endif
   pid_t pid = getpid();
 
-#if DEBUG
-  fprintf(stderr, "_ndb_open(%p, \"%s\") -> ", ndb, path);
+#if NDB_DEBUG
+  if (f_nss_ndb_debug)
+    fprintf(stderr, "_ndb_open(%p, \"%s\") -> ", ndb, path);
 #endif
   
   if (!ndb->db || ndb->pid != pid) {
@@ -576,16 +584,18 @@ _ndb_open(NDB *ndb,
 #if DB_VERSION_MAJOR >= 4
     ret = db_env_create(&ndb->dbe, 0);
     if (ret) {
-#if DEBUG
-      fprintf(stderr, "FAIL (db_env_create)\n");
+#if NDB_DEBUG
+      if (f_nss_ndb_debug)
+	fprintf(stderr, "FAIL (db_env_create)\n");
 #endif
       return -1;
     }
     
     ret = db_create(&ndb->db, NULL, 0);
     if (ret) {
-#if DEBUG
-      fprintf(stderr, "FAIL (db_create)\n");
+#if NDB_DEBUG
+      if (f_nss_ndb_debug)
+	fprintf(stderr, "FAIL (db_create)\n");
 #endif
       
       ndb->dbe->close(ndb->dbe, 0);
@@ -594,14 +604,16 @@ _ndb_open(NDB *ndb,
       return -1;
     }
 
-#if DEBUG
-    fprintf(stderr, "created -> ");
+#if NDB_DEBUG
+    if (f_nss_ndb_debug)
+      fprintf(stderr, "created -> ");
 #endif
 
     ret = ndb->db->open(ndb->db, NULL, path, NULL, DB_BTREE, (rdwr_f ? DB_CREATE : DB_RDONLY), 0644);
     if (ret) {
-#if DEBUG
-      fprintf(stderr, "FAIL (db->open)\n");
+#if NDB_DEBUG
+      if (f_nss_ndb_debug)
+	fprintf(stderr, "FAIL (db->open)\n");
 #endif
       
       ndb->db->close(ndb->db, 0);
@@ -618,8 +630,9 @@ _ndb_open(NDB *ndb,
 #else
     ndb->db = dbopen(path, (rdwr_f ? O_RDWR|O_CREAT|O_EXLOCK : O_RDONLY|O_SHLOCK), 0644, DB_BTREE, NULL);
     if (!ndb->db) {
-#if DEBUG
-      fprintf(stderr, "FAIL (dbopen)\n");
+#if NDB_DEBUG
+      if (f_nss_ndb_debug)
+	fprintf(stderr, "FAIL (dbopen)\n");
 #endif
       return -1;
     }
@@ -627,13 +640,15 @@ _ndb_open(NDB *ndb,
 
   ndb->path = strdup(path);
   
-#if DEBUG
+#if NDB_DEBUG
+  if (f_nss_ndb_debug)
     fprintf(stderr, "opened -> ");
 #endif
   }
   
-#if DEBUG
-  fprintf(stderr, "%p\n", ndb);
+#if NDB_DEBUG
+  if (f_nss_ndb_debug)
+    fprintf(stderr, "%p\n", ndb);
 #endif
   return 0;
 }

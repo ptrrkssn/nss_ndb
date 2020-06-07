@@ -1,0 +1,27 @@
+# $FreeBSD$
+
+PORTNAME=	@PACKAGE_TARNAME@
+DISTVERSIONPREFIX=v
+DISTVERSION=	@PACKAGE_VERSION@
+CATEGORIES=	sysutils security
+
+MAINTAINER=	pen@lysator.liu.se
+COMMENT=	DB-based nsswitch backend for passwd & groups
+
+LICENSE=	BSD3CLAUSE
+LICENSE_FILE=	${WRKSRC}/LICENSE
+
+OPTIONS_DEFINE=	DB
+
+DB_DESC=	Build with modern Berkeley DB library
+
+DB_CONFIGURE_WITH=db
+
+USE_GITHUB=	yes
+GH_ACCOUNT=	ptrrkssn
+
+GNU_CONFIGURE=	yes
+
+PLIST_FILES=	lib/nss_ndb.so.1 lib/nss_ndb.so.@PACKAGE_VERSION@ sbin/makendb
+
+.include <bsd.port.mk>

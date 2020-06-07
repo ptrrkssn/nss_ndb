@@ -29,7 +29,17 @@
 #ifndef NDB_H
 #define NDB_H 1
 
+#include "config.h"
+
+#if defined(HAVE_DB6_H)
+#include <db6/db.h>
+#elif defined(HAVE_DB5_H)
+#include <db5/db.h>
+#elif defined(HAVE_DB48_H)
+#include <db48/db.h>
+#else
 #include <db.h>
+#endif
 
 #ifndef DB_VERSION_MAJOR
 #define DB_VERSION_MAJOR 0

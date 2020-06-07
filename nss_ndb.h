@@ -53,19 +53,19 @@
 
 #define MAXGRFIELDS 5
 
-#ifndef PATH_NSS_NDB_CONF
-#define PATH_NSS_NDB_CONF "/etc/nss_ndb.conf"
+#ifndef NSS_NDB_CONF_PATH
+#define NSS_NDB_CONF_PATH "/etc/nss_ndb.conf"
 #endif
 
-#ifndef PATH_NSS_NDB
-#define PATH_NSS_NDB "/var/db/nss_ndb"
+#ifndef NSS_NDB_DBDIR_PATH
+#define NSS_NDB_DBDIR_PATH "/var/db/nss_ndb"
 #endif
 
-#define PATH_NSS_NDB_PASSWD_BY_UID       PATH_NSS_NDB "/passwd.byuid.db"
-#define PATH_NSS_NDB_PASSWD_BY_NAME      PATH_NSS_NDB "/passwd.byname.db"
-#define PATH_NSS_NDB_GROUP_BY_GID        PATH_NSS_NDB "/group.bygid.db"
-#define PATH_NSS_NDB_GROUP_BY_NAME       PATH_NSS_NDB "/group.byname.db"
-#define PATH_NSS_NDB_USERGROUPS_BY_NAME  PATH_NSS_NDB "/group.byuser.db"
+#define PATH_NSS_NDB_PASSWD_BY_UID       NSS_NDB_DBDIR_PATH "/passwd.byuid.db"
+#define PATH_NSS_NDB_PASSWD_BY_NAME      NSS_NDB_DBDIR_PATH "/passwd.byname.db"
+#define PATH_NSS_NDB_GROUP_BY_GID        NSS_NDB_DBDIR_PATH "/group.bygid.db"
+#define PATH_NSS_NDB_GROUP_BY_NAME       NSS_NDB_DBDIR_PATH "/group.byname.db"
+#define PATH_NSS_NDB_USERGROUPS_BY_NAME  NSS_NDB_DBDIR_PATH "/group.byuser.db"
 
 typedef int (*STR2OBJ)(char *str,
 		       size_t len,

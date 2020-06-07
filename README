@@ -31,34 +31,31 @@ The source code for this project can be downloaded from:
 
 BUILD
 
-By default it will build and install the library and the binaries into
-/usr/local/{etc,lib,bin,sbin} but you probably want it to install into
-/etc & /usr/{lib,bin,sbin} so it will be available early on during system
-boot in case /usr/local is on a filesystem not mounted directly.
+Run the configure script to configure options. By default it will
+install under /usr/local but for a system install you probably want to use:
 
-The "PREFIX" variable in the Makefile can be used to specify alternative
-installation locations (defaults to /usr/local). "ETCDIR" specifies the
-location for the config file.
-
-The database should be kept in /var/db/nss_ndb, but can be relocated via
-the "DBDIR" variable in the Makefile
+  ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
+  
+This is so it will be available early on during system boot in
+case /usr/local is on a filesystem not mounted directly.
 
 You can also enable stripping of "workgroup" (WORKGROUP\name) and "realm"
-(name@REALM) from names before lookup up data in the database. See the
-Makefile for details.
+(name@REALM) from names before lookup up data in the database with the
 
-To compile & install into /usr/{bin,lib} & /etc use:
+  --with-realm[=NAME]
+  --with-workgroup[=NAME]
 
-  make PREFIX=/usr ETCDIR=/etc
+(If NAME is not specified then all realms and/or workgroups will be stripped).
 
-To compile & install into /usr/{bin,lib} & /etc use (but
-you might want to run the test suite first - se next section):
+It can also be configured from a config file if enabled with:
 
-  make PREFIX=/usr ETCDIR=/etc install
+  --with-config-file
 
-In order to make "nsswitch" use the newly installed "nss_ndb.so.VERSION" run:
+Configuration options (for debug/test purposes) can also be
+set from an environment variable (NSS_NDB_CONFIG by default)
+if enabled via:
 
-  make PREFIX=/usr install-nsslink
+  --with-config-var[=NAME]
 
 
 

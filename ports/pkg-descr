@@ -1,0 +1,8 @@
+This project consists of a NSS module (/usr/lib/nss_ndb.so.1) and a CLI
+utility (/usr/bin/makendb) that enables big passwd & group files to be
+handled efficiently via BTree databases stored in /var/db/nss_ndb/.
+
+WWW: https://github.com/ptrrkssn/nss_ndb
+
+- Peter Eriksson
+pen@lysator.liu.se

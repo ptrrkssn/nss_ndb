@@ -26,6 +26,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -82,7 +84,7 @@ void
 version(FILE *fp) {
   fprintf(fp,
 	  "[makendb, version %s - Copyright (c) 2017-2019 Peter Eriksson <pen@lysator.liu.se>]\n",
-	  VERSION);
+	  PACKAGE_VERSION);
 }
 
 
