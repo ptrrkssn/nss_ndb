@@ -48,7 +48,7 @@ localstatedir = @localstatedir@
 
 CC = @CC@
 INSTALL=@INSTALL@
-CFLAGS=@CFLAGS@ -pthread -fPIC -O2 -g -Wall
+CFLAGS=@CFLAGS@ -pthread -fPIC -Wall
 LDFLAGS=@LDFLAGS@
 LIBS=@LIBS@
 
@@ -89,7 +89,7 @@ TCGRPLIST=`id -G $(TESTUSER) | tr ' ' '\n' | sort -n | tr '\n' ',' | sed -e 's/,
 all: $(LIB) $(BINS)
 
 $(LIB): $(LIBOBJS)
-	$(CC) $(LDFLAGS) --shared -o $(LIB) $(LIBOBJS) $(LIBS)
+	$(CC) $(LDFLAGS) --shared -Wl,-soname,lib$(PACKAGE).so.1 -o $(LIB) $(LIBOBJS) $(LIBS)
 
 makendb: makendb.o nss_ndb.o
 	$(CC) $(LDFLAGS) -g -o makendb makendb.o nss_ndb.o $(LIBARGS) $(LIBS)
@@ -120,6 +120,9 @@ install-db:
 
 install-bin: $(BINS)
 	$(INSTALL) -o root -g wheel -m 0755 $(BINS) $(DESTDIR)$(bindir)
+
+install-strip: $(BINS)
+	$(INSTALL) -s -o root -g wheel -m 0755 $(BINS) $(DESTDIR)$(bindir)
 
 install-sbin: ndbsync
 	$(INSTALL) -o root -g wheel -m 0755 ndbsync $(DESTDIR)$(sbindir)
