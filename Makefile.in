@@ -64,13 +64,13 @@ NSSLIBDIR =	/usr/lib
 # Force debugging
 #CPPFLAGS +=	-DDEBUG=2
 
-CPPFLAGS += -DNSS_NDB_CONF_PATH='"${sysconfdir}/nss_ndb.conf"'
-CPPFLAGS += -DNSS_NDB_DBDIR_PATH='"${DBDIR}"'
+CPPFLAGS += 	-DNSS_NDB_CONF_PATH='"${sysconfdir}/nss_ndb.conf"'
+CPPFLAGS += 	-DNSS_NDB_DBDIR_PATH='"${DBDIR}"'
 
-LIB=nss_ndb.so.$(VERSION)
-LIBOBJS=nss_ndb.o
+LIB =		nss_ndb.so.$(VERSION)
+LIBOBJS =	nss_ndb.o
 
-BINS=makendb nsstest
+BINS =		makendb nsstest
 
 
 TESTUSER=$$USER
@@ -89,7 +89,7 @@ TCGRPLIST=`id -G $(TESTUSER) | tr ' ' '\n' | sort -n | tr '\n' ',' | sed -e 's/,
 all: $(LIB) $(BINS)
 
 $(LIB): $(LIBOBJS)
-	$(CC) $(LDFLAGS) --shared -Wl,-soname,lib$(PACKAGE).so.1 -o $(LIB) $(LIBOBJS) $(LIBS)
+	$(CC) $(LDFLAGS) --shared -Wl,-soname,$(PACKAGE).so.1 -o $(LIB) $(LIBOBJS) $(LIBS)
 
 makendb: makendb.o nss_ndb.o
 	$(CC) $(LDFLAGS) -g -o makendb makendb.o nss_ndb.o $(LIBARGS) $(LIBS)
