@@ -182,7 +182,7 @@ t-info:
 	@echo "PLEASE NOTE:"
 	@echo "1. You must have the NDB database files updated with content in $(DBDIR)"
 	@echo "2. You should expect 'make tests' to fail for any user not in the NDB."
-	@echo "To solve #2, use 'make TESTUSER=some-user-in-ndb tests'."
+	@echo "To solve #2, use 'make USER=user-in-database check'."
 	@echo ""
 
 t-checkdb:
