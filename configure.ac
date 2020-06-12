@@ -1,6 +1,6 @@
 
 AC_PREREQ([2.69])
-AC_INIT([nss_ndb], [1.0.21], [pen@lysator.liu.se], [nss_ndb], [https://github.com/ptrrkssn/nss_ndb])
+AC_INIT([nss_ndb], [1.0.22], [pen@lysator.liu.se], [nss_ndb], [https://github.com/ptrrkssn/nss_ndb])
 
 AC_CONFIG_SRCDIR([nss_ndb.c])
 AC_CONFIG_HEADERS([config.h])
@@ -81,10 +81,25 @@ case "${with_config_var}" in
     ;;
 esac
 
-AC_ARG_WITH([db], AS_HELP_STRING([--with-db], [Build with modern BerkeleyDB (yes|no)]))
+AC_ARG_WITH([db], AS_HELP_STRING([--with-db[=ARG]], [Build with modern BerkeleyDB (yes|no|VER)]))
+case "$with_db" in
+  yes)
+    db_libs="db-6 db-5 db-4.8 db"
+    db_hdrs="db6/db.h db5/db.h db48/db.h db.h"
+    ;;
+  no|"")
+    ;;
+  4.8|4)
+    db_libs="db-4.8"
+    db_hdrs="db48/db.h"
+    ;;
+  *)
+    db_libs="db-${with_db}"
+    db_hdrs="db${with_db}/db.h"
+    ;;
+esac
 
-AS_IF([test "x$with_db" = xyes],
-  [AC_SEARCH_LIBS([db_create], [db-6 db-5 db-4.8 db])
-   AC_CHECK_HEADERS([db6/db.h db5/db.h db48/db.h])])
+AS_IF([test "x$db_libs" != "x"], [AC_SEARCH_LIBS([db_create], [$db_libs])])
+AS_IF([test "x$db_hdrs" != "x"], [AC_CHECK_HEADERS([$db_hdrs])])
 
 AC_OUTPUT

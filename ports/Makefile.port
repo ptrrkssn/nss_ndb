@@ -2,7 +2,7 @@
 
 PORTNAME=	nss_ndb
 DISTVERSIONPREFIX=v
-DISTVERSION=	1.0.22-dev
+DISTVERSION=	1.0.22
 CATEGORIES=	sysutils security
 
 MAINTAINER=	pen@lysator.liu.se
@@ -22,6 +22,6 @@ GH_ACCOUNT=	ptrrkssn
 
 GNU_CONFIGURE=	yes
 
-PLIST_FILES=	lib/nss_ndb.so.1 lib/nss_ndb.so.1.0.22-dev sbin/makendb
+PLIST_FILES=	lib/nss_ndb.so.1 lib/nss_ndb.so.1.0.22 sbin/makendb
 
 .include <bsd.port.mk>
