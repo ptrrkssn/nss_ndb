@@ -42,8 +42,10 @@ exec_prefix = @exec_prefix@
 datarootdir = @datarootdir@
 libdir = @libdir@
 bindir = @bindir@
+sbindir = @sbindir@
 mandir = @mandir@
 man1dir = ${mandir}/man1
+man8dir = ${mandir}/man8
 localstatedir = @localstatedir@
 
 CC = @CC@
@@ -128,7 +130,10 @@ install-sbin: ndbsync
 	$(INSTALL) -o root -g wheel -m 0755 ndbsync $(DESTDIR)$(sbindir)
 
 install-man:
+	mkdir -p $(DESTDIR)/$(man1dir)
 	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DESTDIR)$(man1dir)
+	mkdir -p $(DESTDIR)/$(man8dir)
+	$(INSTALL) -o root -g wheel -m 0444 nss_ndb.8 $(DESTDIR)$(man8dir)
 
 install-etc: $(DESTDIR)$(sysconfdir)/nss_ndb.conf
 
@@ -146,7 +151,10 @@ $(DESTDIR)$(sysconfdir)/nss_ndb.conf:
 
 install-lib: $(LIB)
 	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DESTDIR)$(libdir)
-	@echo "Do not forget 'make install-nsslink' if you want 'nsswitch' to use the installed library."
+	ln -sf $(LIB) $(DESTDIR)$(libdir)/nss_ndb.so.1
+	if test "$(libdir)" != "$(NSSLIBDIR)"; then \
+	  echo "Do not forget 'make install-nsslink' if you want 'nsswitch' to use the installed library."; \
+	fi
 
 install-nsslink: install-lib
 	ln -sf $(libdir)/$(LIB) $(NSSLIBDIR)/nss_ndb.so.1

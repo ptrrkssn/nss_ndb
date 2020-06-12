@@ -1,0 +1,131 @@
+.TH "NSS_NDB" "8" "12 Jun 2020" "@PACKAGE_VERSION@" "nss_ndb @PACKAGE_VERSION@ man page"
+
+.SH NAME
+nss_ndb \- BerkeleyDB nsswitch backend for passwd and group data
+
+.SH "DESCRIPTION"
+The
+.B nss_ndb
+nsswitch backend is a shared library that enables usage of BerkeleyDB btree
+database files as a backend for passwd and group data. It is tuned to be fast
+and efficient for large installations (>100,000 entries in passwd & group databases)
+and handle users being member of many groups efficiently.
+
+.SH "CONFIGURATION"
+First make sure there is a symbolic link from /usr/lib/nss_ndb.so.1 to the real location
+of the "nss_ndb.so.<version>" library.
+.PP
+Second step is to populate the databases in the /var/db/nss_ndb/ directory.
+.PP
+Thirst step is to activate the use of
+.B nss_ndb
+in the
+.R "/etc/nsswitch.conf"
+file by adding the
+.B "ndb"
+keyword on the
+.B "passwd"
+and
+.B "group" lines
+.PP
+Depending on how
+.B nss_ndb
+was built support for a configuration file and/or a configuration environment variable
+.I may
+have been enabled. The environment variable is probably most useful for debugging
+purposes. If enabled they can be used to control a couple of options:
+.TP 12
+.B workgroup
+[
+.I workgroup
+]
+.PP
+Configure a "windows" (WORKGROUP\\name) workgroup to strip from user & group names before looking them up
+in the database (AD\username)
+.TP 12
+.B realm
+[
+.I realm
+]
+.PP
+Configure a "realm" (name@realm) to strip from user & group names before looking them up
+in the database (AD\username)
+.TP 12
+.B debug
+.I level
+.PP
+Increase internal debugging verbosity. Not really useful for normal users.
+.PP
+For the environment variable the options are specified as a comma-separated list of key:val pairs.
+.PP
+You can check if
+.B nss_ndb
+was built with support for a configuration file and/or variable by:
+.PP
+.RS
+.nf
+$ strings /usr/lib/nss_ndb.so.1 | fgrep nss_ndb.conf
+$ strings /usr/lib/nss_ndb.so.1 | fgrep NSS_NDB_CONFIG
+.fi
+.RE
+
+.SH "DATABASE"
+
+The databases are normally stored in
+.R /var/db/nss_ndb
+and can be populated via the
+.B makendb
+tool from text files.
+.PP
+A more efficient way is to use a sync tool to update the local NDB
+databases from a remote source regularily (like a MySQL server, or an AD or LDAP server). An
+example sync tool written in Perl is also available as
+.B ndbsync
+which can be modified for your purposes. If you write your own make sure you do not forget to
+lock the databases before updating them in order to maintain consistency.
+
+.SH "FILES"
+.TP
+@sysconfdir@/nss_ndb.conf
+.TP
+/var/db/nss_ndb
+
+.SH "SEE ALSO"
+.PP
+.I nsswitch.conf(5)
+and
+.I makendb(1)
+.SH "AUTHOR"
+.PP
+.B nss_ndb
+was written by Peter Eriksson <pen@lysator.liu.se>.
+.PP
+.SH "LICENSE"
+Copyright (c) 2020, Peter Eriksson <pen@lysator.liu.se>
+.PP
+All rights reserved.
+.PP
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+.IP 1.
+Redistributions of source code must retain the above copyright notice, this
+list of conditions and the following disclaimer.
+.IP 2.
+Redistributions in binary form must reproduce the above copyright notice,
+this list of conditions and the following disclaimer in the documentation
+and/or other materials provided with the distribution.
+.IP 3.
+Neither the name of the copyright holder nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+.PP
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
