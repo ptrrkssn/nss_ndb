@@ -59,10 +59,10 @@ GNU_CONFIGURE=		yes
 PLIST_FILES=		lib/nss_ndb.so.1 \
 			lib/nss_ndb.so.1.0.23 \
 			sbin/makendb sbin/nsstest \
-			share/man/man5/nss_ndb.conf.5.gz \
-			share/man/man8/makendb.8.gz \
-			share/man/man8/nsstest.8.gz \
-			share/man/man8/nss_ndb.8.gz \
+			man/man5/nss_ndb.conf.5.gz \
+			man/man8/makendb.8.gz \
+			man/man8/nsstest.8.gz \
+			man/man8/nss_ndb.8.gz \
 			share/examples/nss_ndb/ndbsync \
 			share/examples/nss_ndb/nss_ndb.conf \
 

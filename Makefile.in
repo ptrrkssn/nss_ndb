@@ -121,7 +121,7 @@ clean:
 	-rm -f *~ \#* *.o *.core core */*~ */\#*
 
 
-install: install-lib install-bin install-man install-db install-examples
+install: install-lib install-bin install-man install-examples
 
 install-db:
 	$(INSTALL) -d $(DESTDIR)$(DBDIR)
