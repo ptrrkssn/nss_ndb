@@ -2,7 +2,7 @@
 #
 # Make stuff for FreeBSD Ports
 
-PORTSDIR=/usr/ports/sysutils/acltool
+PORTSDIR=/usr/ports/sysutils/nss_ndb
 
 all:
 	@echo "Valid targets: 'install', 'distclean', 'clean', 'push' and 'pull'."
@@ -14,7 +14,7 @@ all:
 	@exit 1
 
 install:	$(PORTSDIR)/Makefile $(PORTSDIR)/pkg-descr
-	(cd $(PORTSDIR) && make distclean && portlint -AC)
+	(cd $(PORTSDIR) && make distclean && make makesum && portlint -AC)
 
 $(PORTSDIR):
 	mkdir -p $(PORTSDIR)

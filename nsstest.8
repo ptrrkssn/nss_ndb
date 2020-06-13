@@ -1,0 +1,119 @@
+.TH "NSSTEST" "8" "13 Jun 2020" "1.0.23-dev" "nsstest $PACKAGE_VERSION@ man page"
+
+.SH NAME
+nsstest \- test nsswitch (and nss_ndb) functionality
+
+.SH SYNOPSIS
+.B nsstest
+.RI "[" "options" "]" "action" "[" "arguments" "]"
+
+.SH "DESCRIPTION"
+This manual page documents briefly the
+.B nsstest
+command.
+.PP
+.B nsstest
+is a tool that can be used to test and measure latency in nsswitch lookups
+(currently only for passwd & group databases).
+.PP
+More information may be found at:
+https://github.com/ptrrkssn/nss_ndb
+
+.SH "OPTIONS"
+.TP
+.I -h
+Show summary of options.
+.TP
+.I -v
+Increase verbosity.
+.TP
+.I -x
+Expect failure
+.TP
+.I -c
+Validate returned data
+.TP
+.I -s
+Keep database(s) open
+.TP
+.IR -C text
+Compare returned data
+.TP
+.IR -B bytes
+Buffer size [default: 1048576 bytes]
+.TP
+.IR -T seconds
+Timeout limit [default: 2 s]
+.TP
+.IR -N times
+Repeat test [default: 0 times]
+.TP
+.IR -P threads
+Run in parallel [default: 0 (single-threaded)]
+
+.SH "ACTIONS"
+Test the various library calls (or ndb directly for the ndb_xxx actions). The argument is typically
+the user/group name or uid/gids needed.
+.TP
+.I getpwnam
+.TP
+.I getpwnam_r
+.TP
+.I getpwuid
+.TP
+.I getpwuid_r
+.TP
+.I getpwent
+.TP
+.I getpwent_r
+.TP
+.I getgrnam
+.TP
+.I getgrnam_r
+.TP
+.I getgrgid
+.TP
+.I getgrgid_r
+.TP
+.I getgrent
+.TP
+.I getgrent_r
+.TP
+.I getgrouplist
+.TP
+.I ndb_getpwnam_r
+.TP
+.I ndb_getpwuid_r
+.TP
+.I ndb_getgrnam_r
+.TP
+.I ndb_getgrgid_r
+
+.SH "EXAMPLES"
+.RS
+.nf
+# nsstest getpwnam peter86
+Call results:
+  Calls:     38561
+  Time:      2.00 s
+  Time/call: 51.87 µs
+Test results:
+  Min:       47.68 µs/c
+  Avg:       51.87 µs/c
+  Max:       870.70 µs/c
+.fi
+
+.SH "SEE ALSO"
+.I nss_ndb(8)
+,
+.I makendb(8)
+,
+.I nss_ndb.conf(5)
+,
+.I nsswitch.conf(5)
+,
+.I nsdispatch(3)
+
+.SH "AUTHOR"
+.B nss_ndb
+and tools was written by Peter Eriksson <pen@lysator.liu.se>.

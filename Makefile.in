@@ -30,6 +30,9 @@
 
 @SET_MAKE@
 
+PACKAGE = @PACKAGE_TARNAME@
+VERSION = @PACKAGE_VERSION@
+
 srcdir = @srcdir@
 VPATH = @srcdir@
 
@@ -43,19 +46,17 @@ datarootdir = @datarootdir@
 libdir = @libdir@
 bindir = @bindir@
 sbindir = @sbindir@
+exampledir = ${datarootdir}/examples/nss_ndb
 mandir = @mandir@
-man1dir = ${mandir}/man1
+man5dir = ${mandir}/man5
 man8dir = ${mandir}/man8
 localstatedir = @localstatedir@
 
 CC = @CC@
-INSTALL=@INSTALL@
-CFLAGS=@CFLAGS@ -pthread -fPIC -Wall
-LDFLAGS=@LDFLAGS@
-LIBS=@LIBS@
-
-PACKAGE=@PACKAGE_TARNAME@
-VERSION=@PACKAGE_VERSION@
+INSTALL = @INSTALL@
+CFLAGS = @CFLAGS@ -pthread -fPIC -Wall
+LDFLAGS = @LDFLAGS@
+LIBS = @LIBS@
 
 # Where we keep the database
 DBDIR =		${localstatedir}/db/nss_ndb
@@ -74,6 +75,11 @@ LIBOBJS =	nss_ndb.o
 
 BINS =		makendb nsstest
 
+MAN5S =		nss_ndb.conf.5
+MAN8S =		nss_ndb.8 makendb.8 nsstest.8
+MANS =		$(MAN5S) $(MAN8S)
+
+EXAMPLES =	ndbsync nss_ndb.conf
 
 TESTUSER=$$USER
 
@@ -88,7 +94,7 @@ TCGROUP=`getent group \`id -gn $(TESTUSER)\``
 TCGRPLIST=`id -G $(TESTUSER) | tr ' ' '\n' | sort -n | tr '\n' ',' | sed -e 's/,$$//'`
 
 
-all: $(LIB) $(BINS)
+all: $(LIB) $(BINS) $(SBINS)
 
 $(LIB): $(LIBOBJS)
 	$(CC) $(LDFLAGS) --shared -Wl,-soname,$(PACKAGE).so.1 -o $(LIB) $(LIBOBJS) $(LIBS)
@@ -109,48 +115,42 @@ nss_ndb.o: nss_ndb.c ndb.h nss_ndb.h Makefile
 
 
 distclean: clean
-	-rm -rf *.so.* $(BINS) Makefile config.h autom4te.cache config.log config.status
+	-rm -rf *.so.* $(BINS) $(SBINS) Makefile config.h autom4te.cache config.log config.status
 
 clean:
 	-rm -f *~ \#* *.o *.core core */*~ */\#*
 
 
-install: install-lib install-bin install-sbin install-db install-etc
+install: install-lib install-bin install-man install-db install-examples
 
 install-db:
-	mkdir -p $(DESTDIR)$(DBDIR)
+	$(INSTALL) -d $(DESTDIR)$(DBDIR)
 
 install-bin: $(BINS)
-	$(INSTALL) -o root -g wheel -m 0755 $(BINS) $(DESTDIR)$(bindir)
+	$(INSTALL) -d $(DESTDIR)$(sbindir)
+	$(INSTALL) $(BINS) $(DESTDIR)$(sbindir)
 
 install-strip: $(BINS)
-	$(INSTALL) -s -o root -g wheel -m 0755 $(BINS) $(DESTDIR)$(bindir)
+	$(INSTALL) -d $(DESTDIR)$(sbindir)
+	$(INSTALL) -s $(BINS) $(DESTDIR)$(sbindir)
 
-install-sbin: ndbsync
-	$(INSTALL) -o root -g wheel -m 0755 ndbsync $(DESTDIR)$(sbindir)
+install-examples: $(EXAMPLES)
+	$(INSTALL) -d $(DESTDIR)$(exampledir)
+	$(INSTALL) $(EXAMPLES) $(DESTDIR)$(exampledir)
 
-install-man:
-	mkdir -p $(DESTDIR)/$(man1dir)
-	$(INSTALL) -o root -g wheel -m 0444 makendb.1 $(DESTDIR)$(man1dir)
-	mkdir -p $(DESTDIR)/$(man8dir)
-	$(INSTALL) -o root -g wheel -m 0444 nss_ndb.8 $(DESTDIR)$(man8dir)
-
-install-etc: $(DESTDIR)$(sysconfdir)/nss_ndb.conf
-
-$(DESTDIR)$(sysconfdir)/nss_ndb.conf:
-	$(INSTALL) -o root -g wheel -m 0644 nss_ndb.conf $(DESTDIR)$(sysconfdir)
-	if test "$(WORKGROUP)" != ""; then \
-	  sed -e 's/^#workgroup .*$$/workgroup $(WORKGROUP)/' <$(DESTDIR)$(sysconfdir)/nss_ndb.conf >$(DESTDIR)$(sysconfdir)/nss_ndb.conf.tmp && \
-	    mv $(DESTDIR)$(sysconfdir)/nss_ndb.conf.tmp $(DESTDIR)$(sysconfdir)/nss_ndb.conf; \
-	fi
-	if test "$(REALM)" != ""; then \
-	  sed -e 's/^#realm .*$$/realm $(REALM)/' <$(DESTDIR)$(sysconfdir)/nss_ndb.conf >$(DESTDIR)$(sysconfdir)/nss_ndb.conf.tmp && \
-	    mv $(DESTDIR)$(sysconfdir)/nss_ndb.conf.tmp $(DESTDIR)$(sysconfdir)/nss_ndb.conf; \
-	fi
-	chmod 644 $(DESTDIR)$(sysconfdir)/nss_ndb.conf
+install-man: $(MANS)
+	$(INSTALL) -d $(DESTDIR)$(man5dir)
+	for F in $(MAN5S); do \
+		$(INSTALL) -m 0644 $$F $(DESTDIR)$(man5dir) && gzip -f $(DESTDIR)$(man5dir)/$$F; \
+	done
+	$(INSTALL) -d $(DESTDIR)$(man8dir)
+	for F in $(MAN8S); do \
+		$(INSTALL) -m 0644 $$F $(DESTDIR)$(man8dir) && gzip -f $(DESTDIR)$(man8dir)/$$F; \
+	done
 
 install-lib: $(LIB)
-	$(INSTALL) -o root -g wheel -m 0755 $(LIB) $(DESTDIR)$(libdir)
+	$(INSTALL) -d $(DESTDIR)$(libdir)
+	$(INSTALL) $(INSTALLFLAGS) -m 0755 $(LIB) $(DESTDIR)$(libdir)
 	ln -sf $(LIB) $(DESTDIR)$(libdir)/nss_ndb.so.1
 	if test "$(libdir)" != "$(NSSLIBDIR)"; then \
 	  echo "Do not forget 'make install-nsslink' if you want 'nsswitch' to use the installed library."; \

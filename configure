@@ -3576,7 +3576,7 @@ fi
 done
 
 
-ac_config_files="$ac_config_files Makefile nss_ndb.8 ports/Makefile.port"
+ac_config_files="$ac_config_files Makefile nss_ndb.8 makendb.8 nsstest.8 nss_ndb.conf.5 ports/Makefile.port"
 
 
 
@@ -4466,6 +4466,9 @@ do
     "config.h") CONFIG_HEADERS="$CONFIG_HEADERS config.h" ;;
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "nss_ndb.8") CONFIG_FILES="$CONFIG_FILES nss_ndb.8" ;;
+    "makendb.8") CONFIG_FILES="$CONFIG_FILES makendb.8" ;;
+    "nsstest.8") CONFIG_FILES="$CONFIG_FILES nsstest.8" ;;
+    "nss_ndb.conf.5") CONFIG_FILES="$CONFIG_FILES nss_ndb.conf.5" ;;
     "ports/Makefile.port") CONFIG_FILES="$CONFIG_FILES ports/Makefile.port" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;

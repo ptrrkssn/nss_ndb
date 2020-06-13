@@ -1,0 +1,103 @@
+.TH "MAKENDB" "8" "13 Jun 2020" "@PACKAGE_VERSION@" "makendb $PACKAGE_VERSION@ man page"
+
+.SH NAME
+makendb \- update NSS_NDB databases
+
+.SH SYNOPSIS
+.B makendb
+.RI "[" "options" "]"
+<db-path> <src-path>
+
+.SH "DESCRIPTION"
+This manual page documents the
+.B makendb
+command.
+.PP
+makendb is a tool that can be used to update
+(and possibly dump) NSS_NDB databases. It also contains
+special update modes for importing passwd and group
+files.
+.PP
+.B Please note:
+In order for the
+.B nss_ndb
+backend to be able to extract the list of groups for a specific
+user efficiently is important to import both
+.B passwd
+and
+.B group
+data so the
+.I group.byuser
+database can be populated.
+.B makendb
+does this automatically if you import both.
+.PP
+For large installations with large amounts of users & groups you
+probably want to use some other tool to import data into the NDB
+databases. One example of such a tool written in Perl called
+.I ndbsync can be
+found in the examples directory. This tool syncs the local NDB
+databases with a remote MySQL database and can be run from cron.
+
+.SH "OPTIONS"
+.TP
+.I -h
+Displays usage information
+.TP
+.I -V
+Display version number
+.TP
+.I -v
+Increase verbosity (may be specified multiple times)
+.TP
+.I -d
+Increase internal debugging level (may be specified multiple times)
+.TP
+.I -k
+Also print the "key" when dumping databases.
+.TP
+.I -p
+Print (dump) the database contents.
+.TP
+.I -u
+Enable unique mode. Refuse to overwrite already existing records in the database when importing.
+.IR -D delim
+Specify field delimiter characters. By default uses ":".
+.TP
+.I -T type
+Specify type of file to read. Valid types are
+.B passwd
+or
+.B group
+and must be specified when importing data into the NDB databases.
+.PP
+More information and new relaseses may be found at:
+https://github.com/ptrrkssn/nss_ndb
+
+.SH "EXAMPLES"
+.RS
+.nf
+$ makendb -T passwd /var/db/nss_ndb/passwd </etc/master.passwd
+$ makendb -T group /var/db/nss_ndb/group </etc/group
+.fi
+
+.SH "FILES"
+.TP
+@prefix@/share/examples/nss_ndb/ndbsync
+.TP
+/var/db/nss_ndb
+
+.SH "SEE ALSO"
+.I nss_ndb(8)
+,
+.I nsstest(8)
+,
+.I nss_ndb.conf(5)
+,
+.I nsswitch.conf(5)
+,
+.I nsdispatch(3)
+
+.SH "AUTHOR"
+.B nss_ndb
+and tools was written by Peter Eriksson <pen@lysator.liu.se>.

@@ -1,0 +1,72 @@
+.TH "NSS_NDB.CONF" "5" "13 Jun 2020" "1.0.23-dev" "nss_ndb.conf 1.0.23-dev man page"
+
+.SH NAME
+nss_ndb.conf \- BerkeleyDB nsswitch backend configuration file
+
+.SH "DESCRIPTION"
+The
+.B nss_ndb.conf
+configuration file can be used to specify certain options for the
+.B nss_ndb
+backend for the nsswitch.
+.PP
+.B "Please note"
+that the use of this configuration file by default is
+.B not
+enabled and must explicitly be enabled when building the
+.B nss_ndb
+package. You can check if
+.B nss_ndb
+was built with support for a configuration file (and find the
+location of it) with the following command:
+.PP
+.RS
+.nf
+$ strings /usr/lib/nss_ndb.so.1 | fgrep nss_ndb.conf
+.fi
+
+.SH "CONFIGURATION"
+The configuration file is using a simple "option value" format.
+Lines beginning with '#' and empty lines are ignored. The
+following options may be set in the file:
+.TP 12
+.B workgroup
+[
+.I workgroup
+]
+.PP
+Configure a "windows" (WORKGROUP\\name) workgroup to strip from user & group names before looking them up
+in the database (AD\username)
+.TP 12
+.B realm
+[
+.I realm
+]
+.PP
+Configure a "realm" (name@realm) to strip from user & group names before looking them up
+in the database (AD\username)
+.TP 12
+.B debug
+.I level
+.PP
+Increase internal debugging verbosity. Not really useful for normal users.
+.RE
+.SH "FILES"
+.TP
+/usr/local/share/examples/nss_ndb/nss_ndb.conf
+
+.SH "SEE ALSO"
+.I nss_ndb(8)
+,
+.I makendb(8)
+,
+.I nsstest(8)
+,
+.I nsswitch.conf(5)
+,
+.I nsdispatch(3)
+
+.SH "AUTHOR"
+.PP
+.B nss_ndb
+and tools was written by Peter Eriksson <pen@lysator.liu.se>.

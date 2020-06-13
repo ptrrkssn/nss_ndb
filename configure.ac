@@ -29,7 +29,7 @@ AC_TYPE_SSIZE_T
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([clock_gettime endgrent endpwent memchr memset strcasecmp strchr strdup strerror strncasecmp strndup strrchr dbopen])
 
-AC_CONFIG_FILES([Makefile nss_ndb.8 ports/Makefile.port])
+AC_CONFIG_FILES([Makefile nss_ndb.8 makendb.8 nsstest.8 nss_ndb.conf.5 ports/Makefile.port])
 
 AC_ARG_WITH([realm], AS_HELP_STRING([--with-realm[=NAME]], [Enable realm to strip (yes|no|NAME)]))
 case "${with_realm}" in
