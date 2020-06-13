@@ -1061,7 +1061,7 @@ sub update_netid {
         
         my $ng = 0+($u->{groups} ? @{$u->{groups}} : 0);
 
-        # Format (user:uid:gid,gid,gid...):
+        # Format (user:gid,gid,gid...):
         #  Key: peter86
         #  Data: peter86:1003258,100,101,102^@
         my $k = "$u->{name}";

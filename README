@@ -150,7 +150,7 @@ group.bygid (group:password:gid:user,user,user,...\0):
   Data:
     wheel:*:0:root,Lpeter86,Lmikha02,Ljeamo93,fsAdm,Ldavby02^@
 
-group.byuser (user:uid:gid,gid,gid,...\0):
+group.byuser (user:gid,gid,gid,...\0):
   Key (user):
     peter86
   Data:

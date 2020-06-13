@@ -56,17 +56,13 @@ Increase internal debugging verbosity. Not really useful for normal users.
 @prefix@/share/examples/nss_ndb/nss_ndb.conf
 
 .SH "SEE ALSO"
-.I nss_ndb(8)
-,
-.I makendb(8)
-,
-.I nsstest(8)
-,
-.I nsswitch.conf(5)
-,
-.I nsdispatch(3)
+.BR nss_ndb (8),
+.BR makendb (8),
+.BR nsstest (8),
+.BR nsswitch.conf (5),
+.BR nsdispatch (3)
+.BR "https://github.com/ptrrkssn/nss_ndb"
 
 .SH "AUTHOR"
-.PP
 .B nss_ndb
 and tools was written by Peter Eriksson <pen@lysator.liu.se>.

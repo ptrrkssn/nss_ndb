@@ -14,85 +14,85 @@ command.
 .PP
 .B nsstest
 is a tool that can be used to test and measure latency in nsswitch lookups
-(currently only for passwd & group databases).
-.PP
-More information may be found at:
-https://github.com/ptrrkssn/nss_ndb
+(currently only for passwd & group databases). The normal (non ndb_xx)
+actions tests the whole chain so can be used to test the speed of other
+nsswitch backends.
 
 .SH "OPTIONS"
 .TP
-.I -h
+.B -h
 Show summary of options.
 .TP
-.I -v
+.B -v
 Increase verbosity.
 .TP
-.I -x
-Expect failure
+.B -x
+Expect failure (give error if not failed)
 .TP
-.I -c
+.B -c
 Validate returned data
 .TP
-.I -s
-Keep database(s) open
+.B -s
+Keep database(s) open (setpwent, setgrent)
 .TP
-.IR -C text
+.BI -C " text"
 Compare returned data
 .TP
-.IR -B bytes
+.BI -B " bytes"
 Buffer size [default: 1048576 bytes]
 .TP
-.IR -T seconds
+.BI -T " seconds"
 Timeout limit [default: 2 s]
 .TP
-.IR -N times
+.BI -N " times"
 Repeat test [default: 0 times]
 .TP
-.IR -P threads
+.BI -P " threads"
 Run in parallel [default: 0 (single-threaded)]
 
 .SH "ACTIONS"
-Test the various library calls (or ndb directly for the ndb_xxx actions). The argument is typically
-the user/group name or uid/gids needed.
+Test the various library calls (or ndb directly for the ndb_xxx actions).
+The argument is typically the user/group name or uid/gids needed.
 .TP
-.I getpwnam
+.BI getpwnam " user-name"
 .TP
-.I getpwnam_r
+.BI getpwnam_r " user-name"
 .TP
-.I getpwuid
+.BI getpwuid " uid"
 .TP
-.I getpwuid_r
+.BI getpwuid_r " uid"
 .TP
-.I getpwent
+.B getpwent
 .TP
-.I getpwent_r
+.B getpwent_r
 .TP
-.I getgrnam
+.BI getgrnam " group-name"
 .TP
-.I getgrnam_r
+.BI getgrnam_r " group-name"
 .TP
-.I getgrgid
+.BI getgrgid " gid"
 .TP
-.I getgrgid_r
+.BI getgrgid_r " gid"
 .TP
-.I getgrent
+.B getgrent
 .TP
-.I getgrent_r
+.B getgrent_r
 .TP
-.I getgrouplist
+.BI getgrouplist " user-name"
 .TP
-.I ndb_getpwnam_r
+.BI ndb_getpwnam_r " user-name"
 .TP
-.I ndb_getpwuid_r
+.BI ndb_getpwuid_r " uid"
 .TP
-.I ndb_getgrnam_r
+.BI ndb_getgrnam_r " group-name"
 .TP
-.I ndb_getgrgid_r
+.BI ndb_getgrgid_r " gid"
 
 .SH "EXAMPLES"
-.RS
+.TP
+.B "Single-Threaded username lookups in passwd database"
 .nf
-# nsstest getpwnam peter86
+$ nsstest getpwnam peter
 Call results:
   Calls:     38561
   Time:      2.00 s
@@ -103,16 +103,41 @@ Test results:
   Max:       870.70 µs/c
 .fi
 
+.TP
+.B "Multi-threaded (4 threads) parallel group lookups in group database"
+.nf
+$ nsstest -P 4 getgrnam_r employees
+Call results:
+  Calls:     79659
+  Time:      2.00 s
+  Time/call: 25.16 µs
+Test results:
+  Min:       78.92 µs/c
+  Avg:       100.44 µs/c
+  Max:       2.03 ms/c
+.fi
+
+.TP
+.B ""
+.nf
+$ nsstest  -P10 -s -x ndb_getpwnam_r no-such-user
+Call results:
+  Calls:     237570
+  Time:      2.01 s
+  Time/call: 8.45 µs
+Test results:
+  Min:       34.57 µs/c
+  Avg:       84.20 µs/c
+  Max:       1.01 ms/c
+.fi
+
 .SH "SEE ALSO"
-.I nss_ndb(8)
-,
-.I makendb(8)
-,
-.I nss_ndb.conf(5)
-,
-.I nsswitch.conf(5)
-,
-.I nsdispatch(3)
+.BR nss_ndb (8),
+.BR makendb (8),
+.BR nss_ndb.conf (5),
+.BR nsswitch.conf (5),
+.BR nsdispatch (3),
+.BR "https://github.com/ptrrkssn/nss_ndb"
 
 .SH "AUTHOR"
 .B nss_ndb

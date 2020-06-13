@@ -70,9 +70,6 @@ Specify type of file to read. Valid types are
 or
 .B group
 and must be specified when importing data into the NDB databases.
-.PP
-More information and new relaseses may be found at:
-https://github.com/ptrrkssn/nss_ndb
 
 .SH "EXAMPLES"
 .RS
@@ -88,15 +85,12 @@ $ makendb -T group /var/db/nss_ndb/group </etc/group
 /var/db/nss_ndb
 
 .SH "SEE ALSO"
-.I nss_ndb(8)
-,
-.I nsstest(8)
-,
-.I nss_ndb.conf(5)
-,
-.I nsswitch.conf(5)
-,
-.I nsdispatch(3)
+.BR nss_ndb (8),
+.BR nsstest (8),
+.BR nss_ndb.conf (5),
+.BR nsswitch.conf (5),
+.BR nsdispatch (3),
+.BR "https://github.com/ptrrkssn/nss_ndb"
 
 .SH "AUTHOR"
 .B nss_ndb

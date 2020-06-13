@@ -1,4 +1,4 @@
-.TH "NSS_NDB" "8" "12 Jun 2020" "1.0.23-dev" "nss_ndb 1.0.23-dev man page"
+.TH "NSS_NDB" "8" "12 Jun 2020" "1.0.23" "nss_ndb 1.0.23 man page"
 
 .SH NAME
 nss_ndb \- BerkeleyDB nsswitch backend for passwd and group data
@@ -8,37 +8,43 @@ The
 .B nss_ndb
 nsswitch backend is a shared library that enables usage of BerkeleyDB btree
 database files as a backend for passwd and group data. It is tuned to be fast
-and efficient for large installations (>100,000 entries in passwd & group databases)
-and handle users being member of many groups efficiently.
+and efficient for large installations (>100,000 entries in passwd & group
+databases) and handle users being member of many groups efficiently.
 
 .SH "CONFIGURATION"
-First make sure there is a symbolic link from /usr/lib/nss_ndb.so.1 to the real location
-of the "nss_ndb.so.<version>" library.
+First make sure there is a symbolic link from
+.B /usr/lib/nss_ndb.so.1
+to the real location of the
+.BI "nss_ndb.so." "<version>"
+library.
 .PP
-Second step is to populate the databases in the /var/db/nss_ndb/ directory.
+Second step is to populate the databases in the
+.B /var/db/nss_ndb/
+directory.
 .PP
-Thirst step is to activate the use of
+Third step is to activate the use of
 .B nss_ndb
 in the
-.R "/etc/nsswitch.conf"
+.R /etc/nsswitch.conf
 file by adding the
-.B "ndb"
+.B ndb
 keyword on the
-.B "passwd"
+.B passwd
 and
-.B "group" lines
+.B group lines
 .PP
 Depending on how
 .B nss_ndb
-was built support for a configuration file and/or a configuration environment variable
-( by default
-.B NSS_NDB_CONFIG
-)
+was built support for a configuration file and/or a configuration
+environment variable (by default
+.BR NSS_NDB_CONFIG ")"
 .I may
-(but normally isn't) have been enabled. The environment variable is probably mostly useful
-for debugging purposes and uses the same options as the configuration file but are
-specified as a comma-separated list of key:val pairs. For details of the configuration file see:
-.I nss_ndb.conf(5)
+(but normally isn't) have been enabled. The environment variable
+is probably mostly useful for debugging purposes and uses the same
+options as the configuration file but are specified as a
+comma-separated list of key:val pairs. For details of the
+configuration file see:
+.BR nss_ndb.conf (5)
 .PP
 You can check if
 .B nss_ndb
@@ -59,11 +65,75 @@ and can be populated via the
 tool from text files.
 .PP
 A more efficient way is to use a sync tool to update the local NDB
-databases from a remote source regularily (like a MySQL server, or an AD or LDAP server). An
-example sync tool written in Perl is also available as
-.B ndbsync
-which can be modified for your purposes. If you write your own - make sure you do not forget to
-lock the databases before updating them in order to maintain consistency.
+databases from a remote source regularily (like a MySQL server, or an
+AD or LDAP server). An example sync tool talking to a MySQL server
+written in Perl is available as
+.BR ndbsync (8)
+which can be modified for your purposes. If you write your own - make sure
+you do not forget to lock (using
+.BR flock
+(2)) the databases before updating them in order to maintain consistency.
+.PP
+All tables use UTF-8. All values include a terminating NUL character and
+have the following format:
+.TP 2
+.BR "passwd.byname"
+.BR "Key: " "user-name"
+.br
+.BR "Data: " "user:password:uid:gid:class:change:expire:gecos:home:shell"
+.TP 2
+.BR "passwd.byuid"
+.BR "Key: " "uid"
+.br
+.BR "Data: " "user:password:uid:gid:class:change:expire:gecos:home:shell"
+.TP 2
+.BR "group.byname"
+.BR "Key: " "group-name"
+.br
+.BR "Data: " "group:password:gid:user,user,user,..."
+.TP 2
+.BR "group.bygid"
+.BR "Key: " "gid"
+.br
+.BR "Data: " "group:password:gid:user,user,user,..."
+.TP 2
+.BR "group.byuser"
+.BR "Key: " "user"
+.br
+.BR "Data: " "user:gid,gid,gid,..."
+
+.SH "EXAMPLES"
+.nf
+passwd.byname:
+  Key:
+    anna
+  Data:
+    anna:*:1000036:1000000::0:0:Anna Andersson:/home/anna:/bin/sh^@
+
+passwd.byuid
+  Key:
+    1000036
+  Data:
+    anna:*:1000036:1000000::0:0:Anna Andersson:/home/anna:/bin/sh^@
+
+group.byname
+  Key:
+    wheel
+  Data:
+    wheel:*:0:root,peter,mike,john,anna^@
+
+group.bygid
+  Key:
+    0
+  Data:
+    wheel:*:0:root,peter,mike,john,anna^@
+
+group.byuser
+  Key:
+    anna
+  Data:
+    anna:1000000,0,101,102^@
+.fi
 
 .SH "FILES"
 .TP
@@ -72,15 +142,12 @@ lock the databases before updating them in order to maintain consistency.
 /var/db/nss_ndb
 
 .SH "SEE ALSO"
-.I makendb(8)
-,
-.I nsstest(8)
-,
-.I nss_ndb.conf(5)
-,
-.I nsswitch.conf(5)
-,
-.I nsdispatch(3)
+.BR makendb (8),
+.BR nsstest (8),
+.BR nss_ndb.conf (5),
+.BR nsswitch.conf (5),
+.BR nsdispatch (3),
+.BR "https://github.com/ptrrkssn/nss_ndb"
 
 .SH "AUTHOR"
 .B nss_ndb

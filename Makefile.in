@@ -115,7 +115,7 @@ nss_ndb.o: nss_ndb.c ndb.h nss_ndb.h Makefile
 
 
 distclean: clean
-	-rm -rf *.so.* $(BINS) $(SBINS) Makefile config.h autom4te.cache config.log config.status
+	-rm -rf *.so.* $(BINS) Makefile config.h autom4te.cache config.log config.status
 
 clean:
 	-rm -f *~ \#* *.o *.core core */*~ */\#*
