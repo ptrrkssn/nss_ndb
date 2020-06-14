@@ -124,40 +124,36 @@ clean:
 install: install-lib install-bin install-man install-examples
 
 install-db:
-	$(INSTALL) -d $(DESTDIR)$(DBDIR)
+	$(INSTALL) -d "$(DESTDIR)$(DBDIR)"
 
-install-bin: $(BINS)
-	$(INSTALL) -d $(DESTDIR)$(sbindir)
-	$(INSTALL) $(BINS) $(DESTDIR)$(sbindir)
-
-install-strip: $(BINS)
-	$(INSTALL) -d $(DESTDIR)$(sbindir)
-	$(INSTALL) -s $(BINS) $(DESTDIR)$(sbindir)
+install-bin install-strip: $(BINS)
+	$(INSTALL) -d "$(DESTDIR)$(sbindir)"
+	$(INSTALL) -s $(BINS) "$(DESTDIR)$(sbindir)"
 
 install-examples: $(EXAMPLES)
-	$(INSTALL) -d $(DESTDIR)$(exampledir)
-	$(INSTALL) $(EXAMPLES) $(DESTDIR)$(exampledir)
+	$(INSTALL) -d "$(DESTDIR)$(exampledir)"
+	$(INSTALL) $(EXAMPLES) "$(DESTDIR)$(exampledir)"
 
 install-man: $(MANS)
-	$(INSTALL) -d $(DESTDIR)$(man5dir)
+	$(INSTALL) -d "$(DESTDIR)$(man5dir)"
 	for F in $(MAN5S); do \
-		$(INSTALL) -m 0644 $$F $(DESTDIR)$(man5dir) && gzip -f $(DESTDIR)$(man5dir)/$$F; \
+		$(INSTALL) -m 0644 $$F "$(DESTDIR)$(man5dir)" && gzip -f "$(DESTDIR)$(man5dir)/$$F"; \
 	done
-	$(INSTALL) -d $(DESTDIR)$(man8dir)
+	$(INSTALL) -d "$(DESTDIR)$(man8dir)"
 	for F in $(MAN8S); do \
-		$(INSTALL) -m 0644 $$F $(DESTDIR)$(man8dir) && gzip -f $(DESTDIR)$(man8dir)/$$F; \
+		$(INSTALL) -m 0644 $$F "$(DESTDIR)$(man8dir)" && gzip -f "$(DESTDIR)$(man8dir)/$$F"; \
 	done
 
 install-lib: $(LIB)
-	$(INSTALL) -d $(DESTDIR)$(libdir)
-	$(INSTALL) $(INSTALLFLAGS) -m 0755 $(LIB) $(DESTDIR)$(libdir)
-	ln -sf $(LIB) $(DESTDIR)$(libdir)/nss_ndb.so.1
+	$(INSTALL) -d "$(DESTDIR)$(libdir)"
+	$(INSTALL) $(INSTALLFLAGS) -m 0755 $(LIB) "$(DESTDIR)$(libdir)"
+	ln -sf $(LIB) "$(DESTDIR)$(libdir)/nss_ndb.so.1"
 	if test "$(libdir)" != "$(NSSLIBDIR)"; then \
 	  echo "Do not forget 'make install-nsslink' if you want 'nsswitch' to use the installed library."; \
 	fi
 
 install-nsslink: install-lib
-	ln -sf $(libdir)/$(LIB) $(NSSLIBDIR)/nss_ndb.so.1
+	ln -sf "$(libdir)/$(LIB)" "$(NSSLIBDIR)/nss_ndb.so.1"
 
 pull:
 	git pull
