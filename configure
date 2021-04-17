@@ -2789,6 +2789,10 @@ ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
+if test "$ac_cv_prog_CC" = "cc"; then
+   ac_cpp="$ac_cpp -I/usr/local/include $CPPFLAGS"
+fi
+
 # Find a good install program.  We prefer a C program (faster),
 # so one script is as good as another.  But avoid the broken or
 # incompatible versions:
@@ -3683,14 +3687,10 @@ fi
 
 case "$with_db" in
   yes)
-    db_libs="db-6 db-5 db-4.8 db"
-    db_hdrs="db6/db.h db5/db.h db48/db.h db.h"
+    db_libs="db-18 db-5 db"
+    db_hdrs="db18/db.h db5/db.h db.h"
     ;;
   no|"")
-    ;;
-  4.8|4)
-    db_libs="db-4.8"
-    db_hdrs="db48/db.h"
     ;;
   *)
     db_libs="db-${with_db}"

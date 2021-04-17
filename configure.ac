@@ -84,14 +84,10 @@ esac
 AC_ARG_WITH([db], AS_HELP_STRING([--with-db[=ARG]], [Build with modern BerkeleyDB (yes|no|VER)]))
 case "$with_db" in
   yes)
-    db_libs="db-18 db-6 db-5 db-4.8 db"
-    db_hdrs="db18/db.h db6/db.h db5/db.h db48/db.h db.h"
+    db_libs="db-18 db-5 db"
+    db_hdrs="db18/db.h db5/db.h db.h"
     ;;
   no|"")
-    ;;
-  4.8|4)
-    db_libs="db-4.8"
-    db_hdrs="db48/db.h"
     ;;
   *)
     db_libs="db-${with_db}"

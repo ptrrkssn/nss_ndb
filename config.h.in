@@ -12,15 +12,6 @@
 /* Define to 1 if you have the `clock_gettime' function. */
 #undef HAVE_CLOCK_GETTIME
 
-/* Define to 1 if you have the <db48/db.h> header file. */
-#undef HAVE_DB48_DB_H
-
-/* Define to 1 if you have the <db5/db.h> header file. */
-#undef HAVE_DB5_DB_H
-
-/* Define to 1 if you have the <db6/db.h> header file. */
-#undef HAVE_DB6_DB_H
-
 /* Define to 1 if you have the `dbopen' function. */
 #undef HAVE_DBOPEN
 

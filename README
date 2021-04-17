@@ -58,18 +58,19 @@ if enabled via:
   --with-config-var[=NAME]
 
 By default it will compile and build using the old BerkeleyDB included in libc,
-but you may optionally build with DB6, DB5 or DB4.8 using:
+but you may optionally build with DB18 or DB5 using:
 
   --with-db[=yes|no|VER]
 
-Where VER can (currently) be 6, 5 or 4.8. In order to find the modern
-DB versions you probably also need to add:
+Where VER can (currently) be 18 or 5 . In order to find the modern
+DB versions you probably also need to add paths to where it is
+installed:
 
-  CPPFLAGS="-I/usr/local/include" LDFLAGS="-L/usr/local/lib -R/usr/local/lib"
+  CPPFLAGS="-I/usr/local/include" LDFLAGS="-L/usr/local/lib"
 
 For example:
  
-  ./configure --with-db=6 CPPFLAGS="-I/usr/local/include" LDFLAGS="-L/usr/local/lib -R/usr/local/lib"
+  ./configure --with-db=18 CPPFLAGS="-I/usr/local/include" LDFLAGS="-L/usr/local/lib"
 
 
 TESTING
