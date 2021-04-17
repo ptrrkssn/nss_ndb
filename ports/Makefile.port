@@ -2,7 +2,7 @@
 
 PORTNAME=		nss_ndb
 DISTVERSIONPREFIX=	v
-DISTVERSION=		1.0.24-dev
+DISTVERSION=		1.0.24
 CATEGORIES=		sysutils security
 
 MAINTAINER=		pen@lysator.liu.se
@@ -52,7 +52,7 @@ GH_ACCOUNT=		ptrrkssn
 GNU_CONFIGURE=		yes
 
 PLIST_FILES=		lib/nss_ndb.so.1 \
-			lib/nss_ndb.so.1.0.24-dev \
+			lib/nss_ndb.so.1.0.24 \
 			sbin/makendb sbin/nsstest \
 			man/man5/nss_ndb.conf.5.gz \
 			man/man8/makendb.8.gz \

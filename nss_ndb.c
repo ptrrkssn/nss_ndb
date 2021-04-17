@@ -489,7 +489,6 @@ _ndb_get(NDB *ndb,
   if (!ndb)
     return -1;
 
-  /* XXX: key.flags = DB_DBT_USERMEM; */
 
   if (!key->data) {
 #if DB_VERSION_MAJOR < 4
@@ -514,7 +513,6 @@ _ndb_put(NDB *ndb,
   if (!ndb)
     return -1;
 
-  /* XXX: key.flags = DB_DBT_USERMEM; */
 
   return ndb->db->put(ndb->db,
 #if DB_VERSION_MAJOR >= 4
@@ -625,7 +623,7 @@ _ndb_open(NDB *ndb,
       return -1;
     }
 
-    /* XXX: DB_Env - do locking */
+    /* XXX: DB_Env - do locking? */
     
 #else
     ndb->db = dbopen(path, (rdwr_f ? O_RDWR|O_CREAT|O_EXLOCK : O_RDONLY|O_SHLOCK), 0644, DB_BTREE, NULL);
@@ -847,12 +845,17 @@ nss_ndb_getpwuid_r(void *rv,
   char *buf            = va_arg(ap, char *);
   size_t bsize         = va_arg(ap, size_t);         
   int *res             = va_arg(ap, int *);
-
+  int rc;
   char uidbuf[64];
 
   
-  (void) snprintf(uidbuf, sizeof(uidbuf), "%u", uid);
-  /* XXX Check return value */
+  rc = snprintf(uidbuf, sizeof(uidbuf), "%u", uid);
+  if (rc < 0)
+    return -1;
+  if (rc >= sizeof(uidbuf)) {
+    errno = ENOMEM;
+    return -1;
+  }
   
   return _ndb_getkey_r(&ndb_pwd_byuid,
 		      path_passwd_byuid,
@@ -962,11 +965,17 @@ nss_ndb_getgrgid_r(void *rv,
   char *buf          = va_arg(ap, char *);
   size_t bsize       = va_arg(ap, size_t);
   int *res           = va_arg(ap, int *);
-
+  int rc;
   char gidbuf[64];
   
-  (void) snprintf(gidbuf, sizeof(gidbuf), "%u", gid);
-  /* XXX Check return value */
+
+  rc = snprintf(gidbuf, sizeof(gidbuf), "%u", gid);
+  if (rc < 0)
+    return -1;
+  if (rc >= sizeof(gidbuf)) {
+    errno = ENOMEM;
+    return -1;
+  }
   
   return _ndb_getkey_r(&ndb_grp_bygid,
 		      path_group_bygid,

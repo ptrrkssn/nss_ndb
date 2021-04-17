@@ -1,9 +1,2 @@
-1. Implement tests that checks concurrent write & reads to the same databse from multiple processes
-2. Check the code for "XXX/TODO" stuff
-3. Test hash instead of btree (speed?)
-4. Support modern versions of BerkeleyDB
-5. Update documentation:
-   a) Update man pages
-   b) Create man page for nsstest
-6. How to handle WORKGROUP\user notation?
-7. How to handle user@REALM notation?
+1. Check the code for "XXX/TODO" stuff
+2. Test hash instead of btree (speed?)
