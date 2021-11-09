@@ -1,6 +1,6 @@
 
 AC_PREREQ([2.69])
-AC_INIT([nss_ndb], [1.0.24], [pen@lysator.liu.se], [nss_ndb], [https://github.com/ptrrkssn/nss_ndb])
+AC_INIT([nss_ndb], [1.0.25], [pen@lysator.liu.se], [nss_ndb], [https://github.com/ptrrkssn/nss_ndb])
 
 AC_CONFIG_SRCDIR([nss_ndb.c])
 AC_CONFIG_HEADERS([config.h])

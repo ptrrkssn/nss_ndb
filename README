@@ -1,7 +1,7 @@
 Title:	 nss_ndb
-Version: 1.0.22
+Version: 1.0.25
 Author:  Peter Eriksson <pen@lysator.liu.se>
-Date:    2020-06-12
+Date:    2021-11-09
 
 
 DESCRIPTION
@@ -40,12 +40,17 @@ This is so it will be available early on during system boot in
 case /usr/local is on a filesystem not mounted directly.
 
 You can also enable stripping of "workgroup" (WORKGROUP\name) and "realm"
-(name@REALM) from names before lookup up data in the database with the
+(name@REALM) from names before it looks up data in the database with the
+options:
 
   --with-realm[=NAME]
   --with-workgroup[=NAME]
 
 (If NAME is not specified then all realms and/or workgroups will be stripped).
+
+Please note: If you are using this with Samba 4.15.2 and later (and not
+using nss_winbind) then these options are required!
+
 
 It can also be configured from a config file if enabled with:
 
