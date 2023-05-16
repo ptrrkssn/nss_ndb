@@ -1552,7 +1552,7 @@ main(int argc,
   unsigned long t_nc = 0;
   double t_min = 0;
   double t_max = 0;
-  double t_sum = 0;
+  /*  double t_sum = 0; */
   double t_avg = 0;
   
 
@@ -1647,7 +1647,7 @@ main(int argc,
 
   t_nc = 0;
   t_avg = 0.0;
-  t_sum = 0.0;
+  /*  t_sum = 0.0; */
   t_min = 0.0;
   t_max = 0.0;
   
@@ -1687,7 +1687,7 @@ main(int argc,
       if (!t_max || tav[j].t_max > t_max)
 	t_max = tav[j].t_max;
 
-      t_sum += tav[j].t_sum;
+      /*      t_sum += tav[j].t_sum; */
       t_avg += tav[j].t_sum/tav[j].nc;
     }
 
